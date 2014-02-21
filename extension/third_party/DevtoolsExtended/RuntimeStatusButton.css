@@ -1,0 +1,23 @@
+/* Google BSD license http://code.google.com/google_bsd_license.html
+ * Copyright 2014 Google Inc. johnjbarton@google.com
+ */
+
+.remove {
+  display: none;
+}
+.install {
+  display: inline;
+}
+.runtimeInstalled .remove {
+  display: inline;
+}
+.runtimeInstalled .install {
+  display: none;
+}
+
+.installed {
+  color: silver;  
+}
+.runtimeInstalled .installed {
+  color: black;
+}
