@@ -1,0 +1,140 @@
+<html>
+<link rel='stylesheet' href='unitTest.css'>
+<body>
+  <div class='one-time'>One-time Bindings: <input id="oneTimeBindings" type="checkbox" checked></div>
+<button class='all'>All</body>
+</body>
+<script src="../third_party/harmony-reflect/reflect.js"></script>
+<script src="../lib/FakeCommon.js"></script>
+<script src="../lib/FakeMaker.js"></script>
+<script src="../lib/traceFunctionsRuntime.js"></script>
+<script src="../lib/FakePlayer.js"></script>
+<script src="../out/fakeMakerCompiler.js"></script>
+<script src="../lib/loadByXHR.js"></script>
+<script src="jsonSaveRestore.js"></script>
+<script src="FakeMakerUnitTest.js"></script>
+<script src="TestDriver.js"></script>
+<script name="testPlatformFlags" type="text/fakeMaker">
+// prepoulate window.Platform.flags for default controls
+window.Platform = window.Platform || {};
+// prepopulate window.logFlags if necessary
+window.logFlags = window.logFlags || {};
+// process flags
+(function(scope){
+  // import
+  var flags = scope.flags || {};
+  // populate flags from location
+  location.search.slice(1).split('&').forEach(function(o) {
+    o = o.split('=');
+    o[0] && (flags[o[0]] = o[1] || true);
+  });
+  // If any of these flags match 'native', then force native ShadowDOM; any
+  // other truthy value, or failure to detect native
+  // ShadowDOM, results in polyfill
+  flags.shadow = (flags.shadow || flags.shadowdom || flags.polyfill);
+  if (flags.shadow === 'native') {
+    flags.shadow = false;
+  } else {
+    flags.shadow = flags.shadow || !HTMLElement.prototype.createShadowRoot
+        && 'polyfill';
+  }
+
+  // export
+  scope.flags = flags;
+})(Platform);
+if (Platform.flags) {
+  window.pass();
+}
+</script>
+<script name="testIIFE" type="text/fakeMaker">
+(function() {
+  var timer = {};
+})();
+</script>
+<script name="testIIFEGlobal" type="text/fakeMaker">
+(function(global) {
+  var hasPerformance = typeof global.performance === 'object' && typeof global.performance.now === 'function';
+  return hasPerformance;
+})(this);
+</script>
+
+<script name="testIIFEGlobalProperty" type="text/fakeMaker">
+(function(global) {
+  global.Platform = global.Platform || {};
+  console.log('global.Platform ' + global.Platform)
+  global.Platform.performMicrotaskCheckpoint = function() {
+    return true;
+  };
+})(this);
+this.Platform.performMicrotaskCheckpoint();
+</script>
+<script name="testGlobalPrototype" type="text/fakeMaker">
+(function(global) {
+  var Map;
+  if (global.Map && typeof global.Map.prototype.forEach === 'function') {
+    Map = global.Map;
+  }
+})(this);
+</script>
+<script name="testImplicitGlobalPrototype" type="text/fakeMaker">
+(function(global) {
+  function Benchmark() {}
+  Benchmark.prototype = {foo: 100};
+  global.Benchmark = Benchmark;
+})(this);
+(function(global) {
+  function MDVBenchmark() {
+    return arguments[0] + 1;
+  }
+  MDVBenchmark.prototype = {
+    __proto__: Benchmark.prototype
+  };
+  console.log('MDVBenchmark.prototype.__proto__', MDVBenchmark.prototype.__proto__ )
+  console.log('window.Benchmark.prototype', window.Benchmark.prototype )
+  return MDVBenchmark(MDVBenchmark.prototype.foo);
+})(this);
+</script>
+<script name="testForIn" type="text/fakeMaker">
+var __module4__;
+var __module3__ = (function(__dependency1__) {
+  function extend(obj, value) {
+      for(var key in value) {
+        if(value.hasOwnProperty(key)) {
+          obj[key] = value[key];
+        }
+      }
+    }
+})(__module4__);
+</script>
+<script name="testTypeofGlobalPerformance" type="text/fakeMaker">
+(function(global) {
+  var hasPerformance = typeof global.performance === 'object' &&
+                       typeof global.performance.now === 'function';
+  if (!hasPerformance)
+    throw new Error('This test failed');
+})(this);
+</script>
+<script name="testDetectEval" type="text/fakeMaker">
+(function(global) {
+  function detectEval() {
+    // don't test for eval if document has CSP securityPolicy object and we can see that
+    // eval is not supported. This avoids an error message in console even when the exception
+    // is caught
+    if (global.document &&
+        'securityPolicy' in global.document &&
+        !global.document.securityPolicy.allowsEval) {
+      return false;
+    }
+
+    try {
+      var f = new Function('', 'return true;');
+      return f();
+    } catch (ex) {
+      return false;
+    }
+  }
+
+  var hasEval = detectEval();
+})(typeof global !== 'undefined' && global ? global : this || window);
+</script>
+</html>

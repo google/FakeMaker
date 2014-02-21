@@ -1,0 +1,34 @@
+<script src="../third_party/harmony-reflect/reflect.js"></script>
+<script>
+function getPropertyDescriptorAny(target, name) {
+  var descriptor = Reflect.getOwnPropertyDescriptor(target, name);
+  if (!descriptor) {
+    var proto = Reflect.getPrototypeOf(target);
+    if (proto)
+      return getPropertyDescriptorAny(proto, name);
+  }
+  return descriptor;
+}
+function proxyAFunction(fnc, trueThisArg) {
+  return Proxy(function(){}, {
+    apply: function(target, thisArg, args) {
+      console.log('proxyAFunction fnc: ' + fnc.toString() + ' thisArg: ' + thisArg.constructor.toString());
+      return Reflect.apply(fnc, trueThisArg, args);
+    }
+  });
+}
+var windowProxy = Proxy({}, {
+  get: function(target, name, receiver) {
+    console.log('windowProxy.' + name);
+    var descriptor = getPropertyDescriptorAny(window, name);
+    descriptor.value = proxyAFunction(descriptor.value, window)
+    Object.defineProperty(target, name, descriptor);
+    return target[name];
+  }
+});
+window.addEventListener('foo', function() {
+  console.log("Success!");
+});
+windowProxy.dispatchEvent(new CustomEvent('foo'));
+</script>
+

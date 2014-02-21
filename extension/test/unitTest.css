@@ -1,0 +1,9 @@
+body {
+  cursor: default;
+}
+.pass {
+  color: green;
+}
+.fail {
+  color: red;
+}

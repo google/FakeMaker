@@ -1,0 +1,15 @@
+/* Google BSD license http://code.google.com/google_bsd_license.html
+ * Copyright 2013 Google Inc. johnjbarton@google.com
+ */
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+polymer-ui-sidebar-menu {
+  width: 240px;
+  height: 100%;
+}

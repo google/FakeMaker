@@ -1,0 +1,21 @@
+<script src="../third_party/harmony-reflect/reflect.js"></script>
+<script>
+var realWindow = window;
+var shadow = {};
+var windowProxy = Proxy(shadow, {
+  get: function(target, name, receiver) {
+    var returnValue = realWindow[name] ; //Reflect.get(realWindow, name, receiver);
+    console.log('get windowProxy.' + name + ' ' + (typeof returnValue));
+    console.log('getOwnPropertyDescriptor ' + name + '=' + Object.getOwnPropertyDescriptor(realWindow, name));
+    return returnValue;
+  },
+  set: function(target, name, value, receiver) {
+    console.log('set windowProxy.' + name + ' ' + (typeof value));
+    return realWindow[name] = value;
+    //return Reflect.set(realWindow, name, value, receiver);
+  }
+});
+windowProxy['baz'] = {bal: true};
+console.log('windowProxy[baz] ' + typeof(windowProxy['baz']) + ' prop ' + windowProxy.baz.bal);
+</script>
+

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+</head>
+<body>
+
+  <div id="log"></div>
+
+  <script id="worker1" type="javascript/worker">
+    postMessage(JSON.stringify(Object.getOwnPropertyNames(this)));
+  </script>
+
+  <script>
+    var webpageGlobalProperties = Object.getOwnPropertyNames(window);
+  </script>
+  <script>
+    function reportCommonProperties(workerGlobalProperties) {
+      var nodeGlobalProperties = [ 'Object',  'DataView',  'ReferenceError',  'unescape',  'Math',  'Buffer',  'String',
+          'parseInt',  'GLOBAL',  'setImmediate',  'RegExp',  'setInterval',  'encodeURI',  'Uint16Array',  'clearImmediate',
+          'Number',  'ArrayBuffer',  'Float64Array',  'isNaN',  'undefined',  'Error',  'SyntaxError',  'JSON',  'Infinity',  'Function',
+          'decodeURIComponent',  'eval',  'clearInterval',  'clearTimeout',  'isFinite',  'root',  'Uint8ClampedArray',  'Float32Array',
+          'Array',  'console',  'Date',  'encodeURIComponent',  'global',  'RangeError',  'setTimeout',  'URIError',  'Int8Array',
+          'Uint8Array',  'TypeError',  'Boolean',  'Uint32Array',  'escape',  'NaN',  'decodeURI',  'Int32Array',  'parseFloat',  'EvalError',
+          'process',  'Int16Array' ]
+
+      var diffProperties = [];
+      var commonProperties = workerGlobalProperties.reduce(function(commonProperties, prop) {
+        if (nodeGlobalProperties.indexOf(prop) !== -1)
+          commonProperties.push(prop);
+        else
+          diffProperties.push(prop);
+        return commonProperties;
+      }, []);
+      console.log("diffProperties ", diffProperties);
+      console.log("commonProperties ", commonProperties);
+    }
+
+    function findObnoxiousConstructors() {
+      var obnoxiousConstructors = [];
+      var reasonableProperties = [];
+      webpageGlobalProperties.forEach(function(prop, index) {
+        try {
+          if (typeof window[prop] === 'function')
+            window[prop].call(window);
+            reasonableProperties.push(prop);
+        } catch(e) {
+          if (e.message.indexOf("requires 'new'") !== -1) {
+            obnoxiousConstructors.push(prop);
+          } else if (e.message.indexOf("Illegal constructor") !== -1) {
+            obnoxiousConstructors.push(prop);
+          } else if (e.message.indexOf("Please use the 'new' operator,") !== -1) {
+            obnoxiousConstructors.push(prop);
+          } else if (e.message.indexOf("DOM object constructor cannot be called as a function") !== -1) {
+            obnoxiousConstructors.push(prop);
+          } else {
+            console.log(index + ') Tried to call ' + prop, e);
+            debugger;        
+          }
+        }
+      });
+      console.log("Reasonable Properties ", reasonableProperties);
+      console.log("Obnoxious Constructors ", obnoxiousConstructors);
+      window.obnoxiousConstructorsJSON = JSON.stringify(obnoxiousConstructors);
+    }
+
+    var blob = new Blob([document.querySelector('#worker1').textContent]);
+
+    var worker = new Worker(window.URL.createObjectURL(blob));
+    worker.onmessage = function(e) {
+      console.log("Received: " + e.data);
+      var workerGlobalProperties = JSON.parse(e.data);
+      reportCommonProperties(workerGlobalProperties);
+      findObnoxiousConstructors();
+    }
+
+  </script>
+</body>
+</html>

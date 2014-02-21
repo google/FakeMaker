@@ -1,0 +1,27 @@
+{
+  "name": "FakeMaker",
+  "version": "0.0.1",
+  "description": "Chrome devtool extn. to fake 'window' object for benchmarks",
+  "main": "FakeMakerDevtoolsPage.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": "",
+  "keywords": [
+    "tools",
+    "benchmarks",
+    "javascript",
+    "proxy"
+  ],
+  "author": "johnjbarton@google.com",
+  "license": "BSD",
+  "dependencies": {
+    "source-map": "0.1.30",
+    "codemirror": "~3.21.0",
+    "express": "3.x",
+    "formidable": "1.0.14"
+  }
+}

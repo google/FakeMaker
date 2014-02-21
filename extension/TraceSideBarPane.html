@@ -1,0 +1,35 @@
+<style>
+html,body {
+    margin:0;
+    padding:0;
+}
+body {
+  display: flex;
+  justify-content: center;
+
+  font-family: Lucida Grande, Arial, sans-serif;
+  font-size: 12px;
+}
+.row {
+  display: flex;
+  align-items: center;
+}
+</style>
+<link rel='stylesheet' href="third_party/DevtoolsExtended/RuntimeStatusButton.css">
+<link rel='stylesheet' href="TraceSaveButton.css">
+<body>
+  <div class="row">
+    <div class="runtime-status-button">
+      <button class="install">Install</button>
+      <button class="remove">Remove</button>
+      <span class="installed">Installed</span>
+    </div>
+    <div class="save-trace-button">
+      <button class="save">Save</button>
+      <span class="saved">Saved</span>
+    </div>
+  </div>
+</body>
+
+<script src="third_party/DevtoolsExtended/RuntimeStatusButton.js"></script>
+<script src="TraceSaveButton.js"></script>

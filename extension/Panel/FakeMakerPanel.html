@@ -1,0 +1,21 @@
+<html>
+<script src="../third_party/polymer/polymer/polymer.concat.js"></script>
+<link rel="import" href="../third_party/polymer/polymer-ui-elements/polymer-ui-sidebar-menu/polymer-ui-sidebar-menu.html">
+<link rel="import" href="../third_party/polymer/polymer-ui-elements/polymer-ui-menu-item/polymer-ui-menu-item.html">
+<link rel="stylesheet" href="../third_party/polymer/polymer-ui-elements/basic.css">
+<link rel="stylesheet" href="FakeMakerPanel.css">
+<script src="FakeMakerPanel.js"></script>
+<body class="polymer-ui-body-text" theme="polymer-ui-dark-theme" style="-webkit-transition: opacity 0.3s; transition: opacity 0.3s; opacity: 1;">
+<div>
+<polymer-ui-sidebar-menu id="FakeMakerPanelSidebar" selected="0" label="FakeMaker" class="polymer-ui-dark-theme column flexbox">
+  <polymer-flex-layout vertical="" style="display: none;"></polymer-flex-layout>
+  <polymer-selection id="selection" on-polymer-select="selectionSelect"></polymer-selection>
+  <polymer-ui-menu-item icon="none" label="Help" class="polymer-ui-dark-theme polymer-selected"></polymer-ui-menu-item>
+  <polymer-ui-menu-item icon="none" label="Make" class="polymer-ui-dark-theme"></polymer-ui-menu-item>
+  <polymer-ui-menu-item icon="none" id="play" label="Play" class="polymer-ui-dark-theme"></polymer-ui-menu-item>
+  <polymer-ui-menu-item icon="none" id="pxport" label="Export" class="polymer-ui-dark-theme"></polymer-ui-menu-item>
+  <polymer-collapse id="collapse-play" targetId="play"></polymer-collapse>
+  <polymer-collapse id="collapse-export" targetId="export"></polymer-collapse>
+</polymer-ui-sidebar-menu>
+</div></body>
+</html>

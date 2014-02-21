@@ -1,0 +1,1 @@
+See README.md on github: https://github.com/google/FakeMaker/edit/master/README.md

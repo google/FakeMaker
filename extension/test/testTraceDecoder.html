@@ -1,0 +1,12 @@
+<script src="../lib/traceFunctionsRuntime.js"></script>
+<script src="../out/traceFunctionsPreprocessor.js"></script>
+<script src="../lib/dummyDefine.js"></script>
+<script src="../node_modules/source-map/lib/source-map/binary-search.js"></script>
+<script src="../lib/TraceDecoder.js"></script>
+<script src="./testTraceDecoder.js"></script>
+<script type="text/transcode">
+function foo() {
+  return 5;
+}
+foo();
+</script>
