@@ -9,6 +9,8 @@ BEWARE: this is a complex tool designed to create one or a few benchmark apps. I
 
 Install:
   1. Clone this repo,
+  2. cd extension/, npm install
+  3. cd extension/third_party, git clone https://github.com/tvcutsem/harmony-reflect.git
   2. Open the Chrome browser, chrome://extensions
   3. Set developer mode, open unpacked extension>  this repo/extension
 
