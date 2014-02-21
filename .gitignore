@@ -3,3 +3,4 @@ target/
 node_modules
 compiled/
 output/
+extension/third_party/harmony-reflect/
