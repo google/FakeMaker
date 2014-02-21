@@ -160,7 +160,7 @@
     var fakeMakerSrc = srcs.join('\n');
     var injectFakeMaker = fakeMakerSrc + "\n(" + applyFakeMaker + ")();";
     console.log('loading fakeMakerCompiler');
-    loadByXHR(['out/fakeMakerCompiler.js'], function(fakeMakerCompiler) {
+    loadByXHR(['compiled/fakeMakerCompiler.js'], function(fakeMakerCompiler) {
       var wrap = wrapCompiler('fakeMakerCompiler', fakeMakerCompiler);
       var fakeMakerStatus = new FakeMakerStatus(injectFakeMaker, wrap);
     });
@@ -178,7 +178,7 @@
   loadByXHR(['lib/traceFunctionsRuntime.js', 'lib/FakeCommon.js', 'lib/FakePlayer.js'], function(srcs) {
       var fakePlayerSrc = srcs.join('\n');
       var injectFakePlayer = fakePlayerSrc + "\n(" + applyFakePlayer + ")();";
-      loadByXHR(['out/fakeMakerCompiler.js'], function(fakeMakerCompiler) {
+      loadByXHR(['compiled/fakeMakerCompiler.js'], function(fakeMakerCompiler) {
         var wrap = wrapCompiler('fakeMakerCompiler', fakeMakerCompiler);
         var fakeMakerStatus = new FakePlayerStatus(injectFakePlayer, wrap);
       });
