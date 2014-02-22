@@ -100,7 +100,12 @@ FakePlayer.prototype = {
     var index = this._currentReplay;
     var reply = this._recording[this._currentReplay++];
     var path = this._recording[this._currentReplay++];
-    this.checkForEvent();
+    var event = this.checkForEvent(reply, path);
+    if (event)
+      return event;
+    // Check for sync after event dispatch: if we had an sync event,
+    // the sync for it would already have been checked in its replay call.
+    this.checkSync(path);
     if (reply && typeof reply === 'object' && !reply._fake_function_) {
       var obj = this._rebuiltObjects[reply._fake_object_ref];
       if (debug_player) {
@@ -124,21 +129,46 @@ FakePlayer.prototype = {
     }
   },
 
-  checkForEvent: function() {
-    var maybeEvent = this._recording[this._currentReplay];
+  checkSync: function(path) {
+    var traceIndex = parseInt(path.split(' ').pop(), 10);
+    if (__F_.calls.length - 1 !== traceIndex)
+      throw new Error('FakePlayer out of sync with FakeMaker at ' + path + ' vs ' + (__F_.calls.length - 1));
+  },
+
+  checkForEvent: function(reply, path) {
+    // The JS code may be eg Element.dispatchEvent(event),
+    // so the synchronous callback may need to run before returning
+    // the value of Element.dispatchEvent() from the record.
+    var maybeEvent = reply;
 
     if (maybeEvent && typeof maybeEvent._callback_ === 'number') {
-      // We know the next recorded operation is a callback, but we don't know
-      // if some function currently on the stack will trigger the callback or not.
-      // So we wait until the end of the turn and recheck it.
-      console.log('checkForEvent callback #' + maybeEvent._callback_);
+      var isAsync = !maybeEvent._callback_depth;
+      console.log('checkForEvent callback #' + maybeEvent._callback_ + ' is Async ' + isAsync + ' at ' + path);
       var fakePlayer = this;
-      setTimeout(function() {
-        if (maybeEvent === fakePlayer._recording[fakePlayer._currentReplay]) {
-          var callback = fakePlayer.callbacks[maybeEvent._callback_];
-          callback.call();
-        }
-      });
+      if (!isAsync) {
+        var callback = fakePlayer.callbacks[maybeEvent._callback_];
+        console.log('Calling at stack depth ' + (__F_.calls.length - 1), callback);
+        callback.call();
+        console.log('Replay at stack depth ' + (__F_.calls.length - 1), callback);
+        var eventResult = fakePlayer.replay(path);
+        return eventResult;
+      }
+    } else {
+      // For async events, the JS does not drive the replay, so we need force the callback on the next turn.
+      maybeEvent = this._recording[this._currentReplay];
+      path =  this._recording[this._currentReplay + 1];
+      console.log("check for async event " + path);
+      if (maybeEvent && typeof maybeEvent._callback_ === 'number' && !maybeEvent._callback_depth) {
+        var fakePlayer = this;
+        setTimeout(function() {
+          console.log('checkForEvent setTimeoutFired, callback #' + maybeEvent._callback_, maybeEvent, fakePlayer._recording[fakePlayer._currentReplay]);
+          if (maybeEvent === fakePlayer._recording[fakePlayer._currentReplay]) {
+            fakePlayer._currentReplay += 2;  // skip the callback we found.
+            var callback = fakePlayer.callbacks[maybeEvent._callback_];
+            callback.call();
+          }
+        });
+      }
     }
   },
 

@@ -12,6 +12,7 @@
 window.__F_ = {
   urls: [],
   calls: [],
+  depth: 0,
   sourceF: function(sourceId) {
     var sourceIndex = __F_.urls.indexOf(sourceId);
     if (sourceIndex !== __F_.currentSourceIndex) {
@@ -26,9 +27,11 @@ window.__F_ = {
   enterF: function enterF(sourceId, offset) {
     __F_.sourceF(sourceId);
     __F_.calls.push(offset);
+    __F_.depth++;
   },
   exitF: function exitF(offset) {
     __F_.calls.push(-offset);
+    __F_.depth--;
   },
   callF: function callF(sourceId, offset) {
     __F_.sourceF(sourceId);

@@ -31,7 +31,7 @@ function decodeTrace(calls, sources) {
         var callOffset = -hex - 1;
         trace.push(depth.join('>'));
         if (enterOffset >= 0)
-          trace.push(linesContainingOffsetRange(currentSource, enterOffset, callOffset));
+          trace.push(linesContainingOffsetRange(currentSource, enterOffset, callOffset) + ' ' + index);
         enterOffset = callOffset;
       }
     } else if (entry > 0) {  // enter
@@ -90,7 +90,7 @@ function decodeTraceToLineNumbers(calls, urls, sources) {
         var callOffset = -hex - 1;
         var enterOffset = stack[stack.length - 1];
         if (lineTables[currentSourceIndex])
-          trace.push(linesNumbersContainingOffsetRange(currentSourceIndex, lineTables[currentSourceIndex], enterOffset, callOffset) + ' >');
+          trace.push(linesNumbersContainingOffsetRange(currentSourceIndex, lineTables[currentSourceIndex], enterOffset, callOffset) + ' > ' + index);
       }
     } else if (entry > 0) {  // enter
       stack.push(entry);
