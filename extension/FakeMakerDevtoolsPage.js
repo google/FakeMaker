@@ -168,7 +168,7 @@
 
   loadByXHR(['lib/traceFunctionsRuntime.js'], function (tracerInjectionSrcs) {
     var tracerInjectionSrc = tracerInjectionSrcs.join('\n');
-    loadByXHR(['out/traceFunctionsPreprocessor.js'], function(tracerCompilerSrcs) {
+    loadByXHR(['compiled/traceFunctionsPreprocessor.js'], function(tracerCompilerSrcs) {
       var tracerCompilerSrc = tracerCompilerSrcs.join('\n');
       var wrap = wrapCompiler('tracerCompiler', tracerCompilerSrc);
       var TraceFunctionsStatus = new window.TraceFunctionsStatus('Tracer', tracerInjectionSrc, wrap);

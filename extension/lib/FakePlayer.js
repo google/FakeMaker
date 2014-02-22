@@ -100,6 +100,7 @@ FakePlayer.prototype = {
     var index = this._currentReplay;
     var reply = this._recording[this._currentReplay++];
     var path = this._recording[this._currentReplay++];
+    this.checkSync(path);
     this.checkForEvent();
     if (reply && typeof reply === 'object' && !reply._fake_function_) {
       var obj = this._rebuiltObjects[reply._fake_object_ref];
@@ -124,6 +125,12 @@ FakePlayer.prototype = {
     }
   },
 
+  checkSync: function(path) {
+    var traceIndex = parseInt(path.split(' ').pop(), 10);
+    if (__F_.calls.length - 1 !== traceIndex)
+      throw new Error('FakePlayer out of sync with FakeMaker at ' + path + ' vs ' + (__F_.calls.length - 1));
+  },
+
   checkForEvent: function() {
     var maybeEvent = this._recording[this._currentReplay];
 
@@ -131,9 +138,16 @@ FakePlayer.prototype = {
       // We know the next recorded operation is a callback, but we don't know
       // if some function currently on the stack will trigger the callback or not.
       // So we wait until the end of the turn and recheck it.
-      console.log('checkForEvent callback #' + maybeEvent._callback_);
+      var isAsync = !maybeEvent._callback_depth;
+      console.log('checkForEvent callback #' + maybeEvent._callback_ + ' is Async ' + isAsync);
       var fakePlayer = this;
+      if (!isAsync) {
+        var callback = fakePlayer.callbacks[maybeEvent._callback_];
+        return callback.call();
+      }
+
       setTimeout(function() {
+        console.log('checkForEvent setTimeoutFired, callback #' + maybeEvent._callback_, maybeEvent, fakePlayer._recording[fakePlayer._currentReplay]);
         if (maybeEvent === fakePlayer._recording[fakePlayer._currentReplay]) {
           var callback = fakePlayer.callbacks[maybeEvent._callback_];
           callback.call();

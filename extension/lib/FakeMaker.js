@@ -267,7 +267,7 @@ FakeMaker.prototype = {
     if (recording_debug)
       console.log("_record " + (this._recording.length - 1) + '@' + path, typeof value);
 
-    this._recording.push(path);
+    this._recording.push(path + ' ' + (__F_.calls.length - 1));
     return value;
   },
 
@@ -325,12 +325,13 @@ FakeMaker.prototype = {
 
     return function() {
       if (calls_debug)
-        console.log('_proxyACallback callback called ' + path);
+        console.log('_proxyACallback callback called ' + path + ' with depth ' + __F_.depth);
       var fncProxy = fakeMaker._wrapReturnValue(callback, theThis, path);
       var ref = fakeMaker._getOrCreateFunctionObjectRef(callback, path);
       ref._callback_ = fakeMaker._callbacks.indexOf(callback);
+      ref._callback_depth = __F_.depth;
       fakeMaker._record(ref, path + '-callback');
-      fncProxy.apply(theThis, arguments);
+      Reflect.apply(callback, theThis, arguments);
     }
   },
 
