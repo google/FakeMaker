@@ -912,6 +912,39 @@ tests['checkLoadAddEventListener'] = function() {
   });
 };
 
+  var  ElementIdsrc = '';
+  ElementIdsrc += 'function elementId(element) { return element.id };\n';
+  ElementIdsrc += 'elementId(oneTimeBindings);\n';
+
+tests['testElementId'] = function() {
+  var ourConsole = console;
+  var transcoded = transcode(ElementIdsrc, 'testElementId');
+  console.log('transcoded: ' + transcoded);
+  var fakeMaker = new FakeMaker();
+  windowProxy = fakeMaker.makeFakeWindow();
+  eval(transcoded);
+
+  json.testElementId = fakeMaker.toJSON();
+
+  ourConsole.log('testElementId', JSON.parse(json.testElementId));
+  saveJsonData('testElementId', json);
+  return true;
+}
+
+tests['checkElementId'] = function() {
+  var transcoded = transcode(ElementIdsrc, 'checkElementId.js');
+  console.log('transcoded: ' + transcoded);
+  restoreJsonData('testElementId', function(json) {
+    console.log('checkElementId playback data: ', json)
+    var fakePlayer = new FakePlayer(json);
+    window.windowProxy = fakePlayer.startingObject();
+    fakePlayer.initialize();
+    var result = eval(transcoded);
+    if (isSame('oneTimeBindings', result))
+          pass();
+  });
+};
+
 tests['testDetectEval'] = function() {
   var ourConsole = console;
   // Transcode before creating the proxy

@@ -43,6 +43,18 @@ function FakeMaker() {
   this.exclusions = FakeCommon.chromeBuiltins.concat([
     'Proxy', 'Reflect', 'FakeMaker', 'FakePlayer', 'location', 'webkitStorageInfo', '__F_',
     ]);
+  // DOM elements with id are also globals.
+  var qs = window.document.querySelector.bind(window.document);
+  this.isElementId = function(name) {
+    // call the closure-bound definition before proxies.
+    var result = !!qs('[id=' + name + ']');
+    if (maker_debug)
+       console.log('isElementId ' + name + ' : ' + result);
+    if (result) {
+      this.installProxyForWindowProperty(name);
+    }
+    return result;
+  }
 
   this.nonDOM = {
     addEventListener: function(fakeMaker, name, callback, capturing) {
@@ -149,25 +161,35 @@ FakeMaker.prototype = {
       console.log('stopRecording  ' + path + ' <<');
   },
 
+  installProxyForWindowProperty: function(name) {
+    if (this.exclusions.indexOf(name) === -1) {
+      switch(typeof window[name]){
+        case 'object':
+        case 'funtion':
+          window[name] =
+            this._proxyObject(window[name], window[name], 'window.'+name);
+          break;
+        default:
+          break;
+      }
+    }
+  },
+
+  elementIds: function() {
+    // DOM elements with id are also globals.
+    var ids = [];
+    var elts = document.querySelectorAll('[id]');
+    for (var i = 0; i < elts.length; i++) {
+      ids.push(elts[i].id);
+    }
+    return ids;
+  },
+
   makeFakeWindow: function() {
     // Any access through window. will activate the proxy.
     var windowProxy = this.makeFake(window, 'window');
-
     // Any access of a global will activate its proxy
-    Object.getOwnPropertyNames(window).forEach(function(name) {
-      if (this.exclusions.indexOf(name) === -1) {
-        switch(typeof window[name]){
-          case 'object':
-          case 'funtion':
-            window[name] =
-              this._proxyObject(window[name], window[name], 'window.'+name);
-            break;
-          default:
-            break;
-        }
-      }
-
-    }.bind(this));
+    Object.getOwnPropertyNames(window).forEach(this.installProxyForWindowProperty.bind(this));
     // set return onto window
     return windowProxy;
   },
@@ -397,10 +419,15 @@ FakeMaker.prototype = {
     if (expando_debug)
       console.log('no existing expando ' + name + ' next look in original');
 
+    var isElementId = (obj === window) && this.isElementId(name);
+
     if (this._originalProperties[indexOfProxy].indexOf(name) === -1) {
       // Not on the object when we created the proxy.
-      this.registerExpando(obj, name);
-      return {value: obj[name]};
+      if (!isElementId) {
+        // Not a special case of an element id
+        this.registerExpando(obj, name);
+        return {value: obj[name]};
+      }
     }
     if (expando_debug)
       console.log('expando ' + name +' was in list of originalProperties, mark access');
@@ -630,9 +657,12 @@ FakeMaker.prototype = {
       originalProperties = originalProperties.concat(Object.getOwnPropertyNames(mark));
       mark = mark.__proto__;
     }
+
     this._originalProperties[indexOfProxy] = originalProperties;
 
-    if (maker_debug) console.log(proxyDepth + ': _createProxyObject ' + path);
+    if (maker_debug) {
+      console.log(proxyDepth + ': _createProxyObject ' + path);
+    }
     proxyDepth--;
     return proxy;
   },

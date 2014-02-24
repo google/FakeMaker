@@ -47,6 +47,7 @@ FakePlayer.prototype = {
         console.log('FakePlayer.initialize: add forwarding getter for ' + name);
       }
     });
+
     // Add built-ins to windowProxy forwarding to window.
     FakeCommon.chromeBuiltins.forEach(function(name) {
       window.windowProxy[name] = window[name];
@@ -98,8 +99,12 @@ FakePlayer.prototype = {
 
   replay: function(key) {
     var index = this._currentReplay;
+    if (index >= this._recording.length)
+      throw new Error('FakePlayer ran off the end of the recording');
+
     var reply = this._recording[this._currentReplay++];
     var path = this._recording[this._currentReplay++];
+
     var event = this.checkForEvent(reply, path);
     if (event)
       return event;
@@ -154,6 +159,8 @@ FakePlayer.prototype = {
         return eventResult;
       }
     } else {
+      if (this._currentReplay >= this._recording.length)
+        return;
       // For async events, the JS does not drive the replay, so we need force the callback on the next turn.
       maybeEvent = this._recording[this._currentReplay];
       path =  this._recording[this._currentReplay + 1];
