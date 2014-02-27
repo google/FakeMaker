@@ -200,8 +200,6 @@ FakeMaker.prototype = {
       return {'_fake_': 'Infinity'};
     } else if (Number.isNaN(value)) {
       return {'_fake_': 'NaN'};
-    } else if (typeof value === 'string') {
-      return value.replace(/\"/, '\'');
     } else {
       return value;
     }
