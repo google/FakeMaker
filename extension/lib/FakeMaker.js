@@ -165,7 +165,7 @@ FakeMaker.prototype = {
     if (this.exclusions.indexOf(name) === -1) {
       switch(typeof window[name]){
         case 'object':
-        case 'funtion':
+        case 'function':
           window[name] =
             this._proxyObject(window[name], window[name], 'window.'+name);
           break;
@@ -188,8 +188,7 @@ FakeMaker.prototype = {
   makeFakeWindow: function() {
     // Any access through window. will activate the proxy.
     var windowProxy = this.makeFake(window, 'window');
-    // Any access of a global will activate its proxy
-    Object.getOwnPropertyNames(window).forEach(this.installProxyForWindowProperty.bind(this));
+
     // set return onto window
     return windowProxy;
   },
@@ -217,18 +216,24 @@ FakeMaker.prototype = {
   },
 
   // Objects map uniquely to a proxy: lookup map entry.
-  _lookupProxyObject: function(obj, theThis) {
+  _lookupProxyObject: function(obj, theThis, path) {
     var index = this._proxiedObjects.indexOf(obj);
     if (index !== -1) {
       if (typeof obj === 'object' || !theThis ||
         theThis === this._proxiedObjectRecievers[index]) {
         if (recording_debug) {
               console.log('_lookupProxyObject found index: ' +
-                index + ', typeof: ' + (typeof obj));
+                index + ', typeof: ' + (typeof obj) + ' at ' + path);
         }
         return this._proxiesOfObjects[index];
       }
     }
+    index = this._proxiesOfObjects.indexOf(obj);
+    if (index !== -1) {// The object is a proxy.
+      console.log('_lookupProxyObject found a proxy at ' + path)
+      return obj;
+    }
+
     if (maker_debug)
       console.log('_lookupProxyObject no find for object typeof ' + typeof obj);
   },
@@ -296,7 +301,7 @@ FakeMaker.prototype = {
   _proxyObject: function(obj, theThis, path) {
     if (!obj)
       return obj; // typeof null === 'object'
-    return this._lookupProxyObject(obj, theThis) ||
+    return this._lookupProxyObject(obj, theThis, path) ||
         this._createProxyObject(obj, theThis, path);
   },
 
@@ -344,6 +349,8 @@ FakeMaker.prototype = {
     fakeMaker._callbacks.push(callback);  // Assign a number to each callback.
     if (fakeMaker.isAProxy(callback))
       throw new Error('_proxyACallback sees a proxy');
+    if (fakeMaker.isAProxy(theThis))
+      throw new Error('_proxyACallback sees theThis as a proxy');
 
     return function() {
       if (calls_debug)
@@ -467,8 +474,18 @@ FakeMaker.prototype = {
     return descriptor;
   },
 
+  toObject: function(maybeProxy) {
+    var index = this._proxiesOfObjects.indexOf(maybeProxy);
+    if (index !== -1)
+      return this._proxiedObjects[index];
+    return maybeProxy;
+  },
+
   classNameIfPossible: function(obj) {
-    return obj && obj.constructor && obj.constructor.name;
+    var ctor = this.toObject(this.toObject(obj).constructor);
+    if (ctor) {
+      return this.toObject(ctor.name)
+    }
   },
 
   _createProxyObject: function(obj, theThis, path) {
@@ -486,7 +503,7 @@ FakeMaker.prototype = {
       throw new Error('Cannot make proxy for ' + typeof obj);
 
     if (fakeMaker.isAProxy(obj))
-      throw new Error('_createProxyObject on proxy object');
+      throw new Error('_createProxyObject on proxy object ' + path);
 
     var proxy = Proxy(shadow, {
 
@@ -551,7 +568,13 @@ FakeMaker.prototype = {
             // (because it has a proxy) so the object graph will handle this, ref it.
             var indexOfObj = fakeMaker._proxiesOfObjects.indexOf(descriptor.value);
             var getTargetObj = fakeMaker._proxiedObjects[indexOfObj];
-            fakeMaker._getOrCreateObjectRef(getTargetObj, path);
+            if (typeof getTargetObj === 'object')
+              fakeMaker._getOrCreateObjectRef(getTargetObj, path);
+            else if (typeof getTargetObj === 'function')
+              fakeMaker._getOrCreateFunctionObjectRef(getTargetObj, path);
+            else
+              throw new Error('Proxy get for proxy is not an object or function');
+
             if (get_set_debug)
               console.log('get returns existing proxy for : ' + name + ' {' + typeof getTargetObj + '} at ' + path);
           }
@@ -612,14 +635,16 @@ FakeMaker.prototype = {
             // records to be created; In the player there will be no DOM function and
             // these records will not be replayed. So we pass original objects except
             // for callback functions.
-            var deproxiedArgs = fakeMaker.deproxyArgs(args, thisArg, path);
+            var deproxiedTheThis = fakeMaker.toObject(theThis);
+            var deproxiedArgs = fakeMaker.deproxyArgs(args, deproxiedTheThis, path);
+
             if (calls_debug) {
-              console.log("apply with this: "+ fakeMaker.classNameIfPossible(theThis) +", args " + args.length);
+              console.log("apply with this: "+ fakeMaker.classNameIfPossible(deproxiedTheThis) +", args " + deproxiedArgs.length);
               deproxiedArgs.forEach(function(arg, index) {
                 console.log('apply ['+index +']=' + typeof(arg));
               });
             }
-            return Reflect.apply(obj, theThis, deproxiedArgs);
+            return Reflect.apply(obj, deproxiedTheThis, deproxiedArgs);
           });
         } catch(e) {
           console.log('_proxyFunction.apply FAILS ' + e, e.stack);

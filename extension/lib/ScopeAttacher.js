@@ -130,6 +130,11 @@ export class ScopeAttacher extends FreeVariableChecker {
     tree.scope = scope;
   }
 
+  visitUnaryExpression(tree) {
+    // FreeVariableChecker has a heuristic that we don't want to use.
+    this.visitAny(tree.operand);
+  }
+
   visitReferences(onUnresolvedReference) {
     var scope = this.scope_;
     for (var name in scope.references) {

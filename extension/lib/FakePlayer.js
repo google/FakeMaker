@@ -7,7 +7,7 @@
 
 (function(global){
 
-var debug_player = true;
+var debug_player = false;
 
 function FakePlayer(json) {
   var fromJSON;
@@ -41,10 +41,12 @@ FakePlayer.prototype = {
             return window.windowProxy[name];
           },
           set: function(value) {
-            console.warn('fakePlayer ignores set call for ' + name);
+            if (debug_player)
+              console.warn('fakePlayer ignores set call for ' + name);
           }
         });
-        console.log('FakePlayer.initialize: add forwarding getter for ' + name);
+        if (debug_player)
+          console.log('FakePlayer.initialize: add forwarding getter for ' + name);
       }
     });
 
@@ -148,13 +150,16 @@ FakePlayer.prototype = {
 
     if (maybeEvent && typeof maybeEvent._callback_ === 'number') {
       var isAsync = !maybeEvent._callback_depth;
-      console.log('checkForEvent callback #' + maybeEvent._callback_ + ' is Async ' + isAsync + ' at ' + path);
+      if (debug_player)
+        console.log('checkForEvent callback #' + maybeEvent._callback_ + ' is Async ' + isAsync + ' at ' + path);
       var fakePlayer = this;
       if (!isAsync) {
         var callback = fakePlayer.callbacks[maybeEvent._callback_];
-        console.log('Calling at stack depth ' + (__F_.calls.length - 1), callback);
+        if (debug_player)
+          console.log('Calling at stack depth ' + (__F_.calls.length - 1), callback);
         callback.call();
-        console.log('Replay at stack depth ' + (__F_.calls.length - 1), callback);
+        if (debug_player)
+          console.log('Replay at stack depth ' + (__F_.calls.length - 1), callback);
         var eventResult = fakePlayer.replay(path);
         return eventResult;
       }
@@ -164,11 +169,13 @@ FakePlayer.prototype = {
       // For async events, the JS does not drive the replay, so we need force the callback on the next turn.
       maybeEvent = this._recording[this._currentReplay];
       path =  this._recording[this._currentReplay + 1];
-      console.log("check for async event " + path);
+      if (debug_player)
+        console.log("check for async event " + path);
       if (maybeEvent && typeof maybeEvent._callback_ === 'number' && !maybeEvent._callback_depth) {
         var fakePlayer = this;
         setTimeout(function() {
-          console.log('checkForEvent setTimeoutFired, callback #' + maybeEvent._callback_, maybeEvent, fakePlayer._recording[fakePlayer._currentReplay]);
+          if (debug_player)
+            console.log('checkForEvent setTimeoutFired, callback #' + maybeEvent._callback_, maybeEvent, fakePlayer._recording[fakePlayer._currentReplay]);
           if (maybeEvent === fakePlayer._recording[fakePlayer._currentReplay]) {
             fakePlayer._currentReplay += 2;  // skip the callback we found.
             var callback = fakePlayer.callbacks[maybeEvent._callback_];

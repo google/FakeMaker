@@ -873,17 +873,29 @@ tests['checkElementAddEventListener'] = function() {
 var LoadAddEventListenersrc =  'function fakeLoadHandler(){window.testLoadAddEventListener=39; console.log("set XXXXXXXX");window.pass();}\n';
 LoadAddEventListenersrc +=  'window.addEventListener("fakeLoad", fakeLoadHandler);\n';
 
+function unproxiedDispatch() {
+  // Bind the unproxied function.
+  var fakeLoad = new CustomEvent('fakeLoad');
+  var dispatchEvent = window.dispatchEvent.bind(window);
+  var removeEventListener = window.removeEventListener.bind(window);
+  // Close over this bound unproxied functions
+  return function() {
+    dispatchEvent(fakeLoad);
+    return removeEventListener;
+  }
+}
+
 tests['testLoadAddEventListener'] = function() {
   var ourConsole = console;
+  var unproxiedDispatcher = unproxiedDispatch();
 
   var transcoded = transcode(LoadAddEventListenersrc, 'testLoadAddEventListener.js');
   console.log('transcoded: ' + transcoded);
   var fakeMaker = new FakeMaker();
   windowProxy = fakeMaker.makeFakeWindow();
   eval.call(window, transcoded);
-  var fakeLoad = new CustomEvent('fakeLoad');
-  window.dispatchEvent(fakeLoad);
-  window.removeEventListener('fakeLoad', fakeLoadHandler);
+  var remover = unproxiedDispatcher();
+  remover('fakeLoad', fakeLoadHandler);
   json.testLoadAddEventListener = fakeMaker.toJSON();
 
   ourConsole.log('testLoadAddEventListener', JSON.parse(json.testLoadAddEventListener));
@@ -912,9 +924,9 @@ tests['checkLoadAddEventListener'] = function() {
   });
 };
 
-  var  ElementIdsrc = '';
-  ElementIdsrc += 'function elementId(element) { return element.id };\n';
-  ElementIdsrc += 'elementId(oneTimeBindings);\n';
+var  ElementIdsrc = '';
+ElementIdsrc += 'function elementId(element) { return element.id };\n';
+ElementIdsrc += 'elementId(oneTimeBindings);\n';
 
 tests['testElementId'] = function() {
   var ourConsole = console;
@@ -944,6 +956,42 @@ tests['checkElementId'] = function() {
           pass();
   });
 };
+
+var  BuiltInFunctionPropertysrc = '';
+BuiltInFunctionPropertysrc += '(function(global) {var hasIt = typeof HTMLTemplateElement !== "undefined";\n';
+BuiltInFunctionPropertysrc += 'HTMLTemplateElement.decorate = function(el, opt_instanceRef) {\n';
+BuiltInFunctionPropertysrc += '  return true;\n';
+BuiltInFunctionPropertysrc += '};return HTMLTemplateElement.decorate();\n})(window);\n';
+
+tests['testBuiltInFunctionProperty'] = function() {
+  var ourConsole = console;
+  var transcoded = transcode(BuiltInFunctionPropertysrc, 'testBuiltInFunctionProperty');
+  console.log('transcoded: ' + transcoded);
+  var fakeMaker = new FakeMaker();
+  windowProxy = fakeMaker.makeFakeWindow();
+  eval(transcoded);
+
+  json.testBuiltInFunctionProperty = fakeMaker.toJSON();
+
+  ourConsole.log('testBuiltInFunctionProperty', JSON.parse(json.testBuiltInFunctionProperty));
+  saveJsonData('testBuiltInFunctionProperty', json);
+  return true;
+}
+
+tests['checkBuiltInFunctionProperty'] = function() {
+  var transcoded = transcode(BuiltInFunctionPropertysrc, 'checkBuiltInFunctionProperty.js');
+  console.log('transcoded: ' + transcoded);
+  restoreJsonData('testBuiltInFunctionProperty', function(json) {
+    console.log('checkBuiltInFunctionProperty playback data: ', json)
+    var fakePlayer = new FakePlayer(json);
+    window.windowProxy = fakePlayer.startingObject();
+    fakePlayer.initialize();
+    var result = eval(transcoded);
+    if (isSame(true, result))
+          pass();
+  });
+};
+
 
 tests['testDetectEval'] = function() {
   var ourConsole = console;
