@@ -59,14 +59,8 @@ function generateLineTables(source) {
   return table;
 }
 
-function linesNumbersContainingOffsetRange(urlIndex, lineTable, enterOffset, callOffset) {
+function urlIndexWIthOffsets(urlIndex, lineTable, enterOffset, callOffset) {
   return urlIndex + ': ' + enterOffset + ', ' + callOffset;
-  function delta(offset, elt) {
-    return offset - elt;
-  }
-  var enterLine = lineTable.indexOf(search(enterOffset, lineTable, delta)) + 1;
-  var callLine = lineTable.indexOf(search(callOffset, lineTable, delta)) + 1;
-  return urlIndex + ': ' + enterLine + ', ' + callLine;
 }
 
 function decodeTraceToLineNumbers(calls, urls, sources) {
@@ -90,7 +84,7 @@ function decodeTraceToLineNumbers(calls, urls, sources) {
         var callOffset = -hex - 1;
         var enterOffset = stack[stack.length - 1];
         if (lineTables[currentSourceIndex])
-          trace.push(linesNumbersContainingOffsetRange(currentSourceIndex, lineTables[currentSourceIndex], enterOffset, callOffset) + ' > ' + index);
+          trace.push(urlIndexWIthOffsets(currentSourceIndex, lineTables[currentSourceIndex], enterOffset, callOffset) + ' > ' + index);
       }
     } else if (entry > 0) {  // enter
       stack.push(entry);
@@ -98,7 +92,7 @@ function decodeTraceToLineNumbers(calls, urls, sources) {
       var exitOffset = -entry;
       var enterOffset = stack.pop();
       if (enterOffset >= 0 && lineTables[currentSourceIndex])
-        trace.push(linesNumbersContainingOffsetRange(currentSourceIndex, lineTables[currentSourceIndex], enterOffset, exitOffset) + ' <');
+        trace.push(urlIndexWIthOffsets(currentSourceIndex, lineTables[currentSourceIndex], enterOffset, exitOffset) + ' <');
     }
   });
   return trace.join('\n');
