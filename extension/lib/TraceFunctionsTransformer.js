@@ -13,9 +13,13 @@ import {
 import {
   CallExpression,
   CommaExpression,
+  ExpressionStatement,
   FunctionBody,
+  Module,
+  NewExpression,
   ParenExpression,
-  ReturnStatement
+  ReturnStatement,
+  Script
 } from '../third_party/traceur-compiler/src/syntax/trees/ParseTrees';
 import {
   parseExpression,
@@ -44,13 +48,41 @@ export class TraceFunctionsTransformer extends ParseTreeTransformer {
     var offset = tree.location.end.offset;
     return parseExpression `__F_.callF(${this.sourceId}, ${offset})`;
   }
+  wrapScriptItemList(tree) {
+    return [
+        this.enterStatement(tree),
+        ...tree.scriptItemList,
+        new ExpressionStatement(tree.location, this.exitExpression(tree))
+    ];
+  }
+  transformScript(tree) {
+    tree = super(tree);
+    var wrappedItems = this.wrapScriptItemList(tree);
+    return new Script(tree.location, wrappedItems, tree.moduleName);
+  }
+  transformModule(tree) {
+    tree = super(tree);
+    var wrappedItems = this.wrapScriptItemList(tree);
+    return new Module(tree.location, wrappedItems, tree.moduleName);
+  }
+
   transformCallExpression(tree) {
     var operand = this.transformAny(tree.operand);
     var args = this.transformAny(tree.args);
-    return new ParenExpression(tree.location, 
+    return new ParenExpression(tree.location,
         new CommaExpression(tree.location, [
-            this.callExpression(tree), 
+            this.callExpression(tree),
             new CallExpression(tree.location, operand, args)
+          ])
+        );
+  }
+  transformNewExpression(tree) {
+    var operand = this.transformAny(tree.operand);
+    var args = this.transformAny(tree.args);
+    return new ParenExpression(tree.location,
+        new CommaExpression(tree.location, [
+            this.callExpression(tree),
+            new NewExpression(tree.location, operand, args)
           ])
         );
   }
