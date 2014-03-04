@@ -50,6 +50,7 @@ class CodeUnit {
     this.name_ = name;
     this.referrerName_ = referrerName;
     this.address_ = address;
+    this.url = InternalLoader.uniqueName(normalizedName, address);
     this.uid = getUid();
     this.state_ = state || NOT_STARTED;
     this.error = null;
@@ -107,9 +108,8 @@ class CodeUnit {
     return this.loaderHooks.transform(this);
   }
 
-  instantiate() {
-    if (this.loaderHooks.instantiate(this))
-      throw new Error('instantiate() with factory return not implemented.');
+  instantiate(load) {
+    return this.loaderHooks.instantiate(this);
   }
 }
 
@@ -188,9 +188,11 @@ class EvalCodeUnit extends HookedCodeUnit {
       normalizedName, referrerName, address) {
     super(loaderHooks, normalizedName, type,
         LOADED, null, referrerName, address);
-    this.text = code;
+    this.source = code;
   }
 }
+
+var uniqueNameCount = 0;
 
 /**
  * The internal implementation of the code loader.
@@ -205,14 +207,9 @@ export class InternalLoader {
     this.cache = new ArrayMap();
     this.urlToKey = Object.create(null);
     this.sync_ = false;
-    this.translateHook = loaderHooks.translate || defaultTranslate;
   }
 
-  loadTextFile(url, callback, errback) {
-    return this.loaderHooks.fetch({address: url}, callback, errback);
-  }
-
-  load(name, referrerName = this.loaderHooks.rootUrl(),
+  load(name, referrerName = this.loaderHooks.baseURL,
       address, type = 'script') {
     var codeUnit = this.load_(name, referrerName, address, type);
     return codeUnit.promise.then(() => codeUnit);
@@ -231,14 +228,18 @@ export class InternalLoader {
         return codeUnit;
 
       codeUnit.state = LOADING;
-      var translate = this.translateHook;
-      var url = this.loaderHooks.locate(codeUnit);
-      codeUnit.abort = this.loadTextFile(url, (text) => {
-        codeUnit.text = translate(text);
+      codeUnit.address = this.loaderHooks.locate(codeUnit);
+      this.loaderHooks.fetch(codeUnit).then((text) => {
+        codeUnit.source = text;
+        return codeUnit;
+      }).then(this.loaderHooks.translate.bind(this.loaderHooks)).then((source) => {
+        codeUnit.source = source;
         codeUnit.state = LOADED;
         this.handleCodeUnitLoaded(codeUnit);
-      }, () => {
+        return codeUnit;
+      }).catch((err) => {
         codeUnit.state = ERROR;
+        codeUnit.abort = function() {};
         this.handleCodeUnitLoadError(codeUnit);
       });
     }
@@ -287,10 +288,13 @@ export class InternalLoader {
     return this.loaderHooks.options;
   }
 
-  sourceMap(normalizedName, type) {
+  sourceMapInfo(normalizedName, type) {
     var key = this.getKey(normalizedName, type);
     var codeUnit = this.cache.get(key);
-    return codeUnit && codeUnit.metadata && codeUnit.metadata.sourceMap;
+    return {
+      sourceMap: codeUnit && codeUnit.metadata && codeUnit.metadata.sourceMap,
+      url: codeUnit && codeUnit.url
+    };
   }
 
   getKey(url, type) {
@@ -367,13 +371,13 @@ export class InternalLoader {
    * @param {CodeUnit} codeUnit
    */
   handleCodeUnitLoadError(codeUnit) {
-    var message = `Failed to load '${codeUnit.url}'.\n` +
+    var message = `Failed to load '${codeUnit.address}'.\n` +
         codeUnit.nameTrace() + this.loaderHooks.nameTrace(codeUnit);
 
     this.reporter.reportError(null, message);
     this.abortAll(message);
     codeUnit.error = message;
-    codeUnit.reject(message);
+    codeUnit.reject(new Error(message));
   }
 
   /**
@@ -388,7 +392,7 @@ export class InternalLoader {
     });
     // Notify all codeUnit listeners (else tests hang til timeout).
     this.cache.values().forEach((codeUnit) => {
-      codeUnit.reject(codeUnit.error || errorMessage);
+      codeUnit.reject(new Error(codeUnit.error || errorMessage));
     });
   }
 
@@ -428,11 +432,11 @@ export class InternalLoader {
     var metadata = codeUnit.metadata;
     metadata.transformedTree = codeUnit.transform();
     codeUnit.state = TRANSFORMED;
-    var filename = codeUnit.url || codeUnit.normalizedName;
+    var filename = codeUnit.address || codeUnit.normalizedName;
     [metadata.transcoded, metadata.sourceMap] =
         toSource(metadata.transformedTree, this.options, filename);
-    if (codeUnit.url && metadata.transcoded)
-      metadata.transcoded += '//# sourceURL=' + codeUnit.url;
+    if (codeUnit.address && metadata.transcoded)
+      metadata.transcoded += '//# sourceURL=' + codeUnit.address;
   }
 
   checkForErrors(dependencies, phase) {
@@ -496,7 +500,7 @@ export class InternalLoader {
       }
 
       codeUnit.result = result;
-      codeUnit.text = null;
+      codeUnit.source = null;
     }
 
     for (var i = 0; i < dependencies.length; i++) {
@@ -508,10 +512,15 @@ export class InternalLoader {
       codeUnit.resolve(codeUnit.result);
     }
   }
-}
 
-function defaultTranslate(source) {
-  return source;
+  static uniqueName(normalizedName, referrerAddress) {
+    var importerAddress = referrerAddress || System.baseURL;
+    if (!importerAddress)
+      throw new Error('The System.baseURL is an empty string');
+    var path = normalizedName || String(uniqueNameCount++);
+    return resolveUrl(importerAddress, path);
+  }
+
 }
 
 // jjb I don't understand why this is needed.

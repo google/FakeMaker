@@ -114,6 +114,7 @@ suite('context test', function() {
         });
   });
 
+
   test('script option per file', function(done) {
     tempFileName = resolve(uuid.v4() + '.js');
     var executable = 'node ' + resolve('src/node/command.js');
@@ -137,8 +138,8 @@ suite('context test', function() {
       assert.isNull(error);
       var fileContents = fs.readFileSync(path.resolve(outDir, 'file.js'));
       var depContents = fs.readFileSync(path.resolve(outDir, 'dep.js'));
-      assert.equal(fileContents + '', "define(['./dep'], function($__0) {\n  \"use strict\";\n  var __moduleName = \"../../test/unit/node/resources/compile-dir/file\";\n  var q = ($__0).q;\n  var p = 'module';\n  return {\n    get p() {\n      return p;\n    },\n    __transpiledModule: true\n  };\n});\n");
-      assert.equal(depContents + '', "define([], function() {\n  \"use strict\";\n  var __moduleName = \"../../test/unit/node/resources/compile-dir/dep\";\n  var q = 'q';\n  return {\n    get q() {\n      return q;\n    },\n    __transpiledModule: true\n  };\n});\n");
+      assert.equal(fileContents + '', "define(['./dep'], function($__0) {\n  \"use strict\";\n  var __moduleName = \"../../test/unit/node/resources/compile-dir/file\";\n  if (!$__0 || !$__0.__esModule)\n    $__0 = {'default': $__0};\n  var q = ($__0).q;\n  var p = 'module';\n  return {\n    get p() {\n      return p;\n    },\n    __esModule: true\n  };\n});\n");
+      assert.equal(depContents + '', "define([], function() {\n  \"use strict\";\n  var __moduleName = \"../../test/unit/node/resources/compile-dir/dep\";\n  var q = 'q';\n  return {\n    get q() {\n      return q;\n    },\n    __esModule: true\n  };\n});\n");
       done();
     });
   });
@@ -155,23 +156,5 @@ suite('context test', function() {
       assert.equal(depContents + '', "\"use strict\";\nvar __moduleName = \"../../test/unit/node/resources/compile-dir/dep\";\nvar q = 'q';\nmodule.exports = {get q() {\n    return q;\n  }};\n");
       done();
     });
-  });
-
-  test('compiled modules traceur@', function(done) {
-    tempFileName = resolve(uuid.v4() + '.js');
-    var executable = 'node ' + resolve('src/node/command.js');
-    var inputFileName = resolve('test/unit/node/resources/importsTreeWriter.js');
-
-    exec(executable + ' --out ' + tempFileName + ' -- ' + inputFileName,
-        function(error, stdout, stderr) {
-          if (error) {
-            console.log('stdout: ' + stdout);
-            console.log('stderr: ' + stderr);
-          }
-          assert.isNull(error);
-          executeFileWithRuntime(tempFileName);
-          assert.equal(global.result, 'x');
-          done();
-        });
-  });
+  })
 });

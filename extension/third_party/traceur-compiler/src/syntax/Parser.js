@@ -351,7 +351,7 @@ export class Parser {
      * @type {boolean}
      * @private
      */
-    this.allowYield_ = options.unstarredGenerators;
+    this.allowYield_ = false;
 
     /**
      * Keeps track of whether we are currently in strict mode parsing or not.
@@ -954,7 +954,7 @@ export class Parser {
 
     var allowYield = this.allowYield_;
     var strictMode = this.strictMode_;
-    this.allowYield_ = isGenerator || options.unstarredGenerators;
+    this.allowYield_ = isGenerator;
 
     var result = this.parseStatementList_(!strictMode);
 
@@ -1475,18 +1475,15 @@ export class Parser {
    * @private
    */
   parseYieldExpression_() {
-    if (!this.allowYield_) {
-      return this.parseSyntaxError_(
-          "'yield' expressions are only allowed inside 'function*'");
-    }
-
     var start = this.getTreeStartLocation_();
     this.eat_(YIELD);
     var expression = null;
-    var isYieldFor = this.eatIf_(STAR);
-    if (isYieldFor || !this.peekImplicitSemiColon_(this.peekType_())) {
+    var isYieldFor = false;
+    if (!this.peekImplicitSemiColon_(this.peekType_())) {
+      isYieldFor = this.eatIf_(STAR);
       expression = this.parseAssignmentExpression();
     }
+
     return new YieldExpression(
         this.getTreeLocation_(start), expression, isYieldFor);
   }
@@ -2026,7 +2023,8 @@ export class Parser {
       }
 
       if (parseOptions.propertyNameShorthand &&
-          nameLiteral.type === IDENTIFIER) {
+          nameLiteral.type === IDENTIFIER ||
+          !this.strictMode_ && nameLiteral.type === YIELD) {
 
         if (this.peek_(EQUAL)) {
           token = this.nextToken_();
@@ -2036,9 +2034,15 @@ export class Parser {
                                        nameLiteral, token, expr);
         }
 
+        if (nameLiteral.type === YIELD)
+          nameLiteral = new IdentifierToken(nameLiteral.location, YIELD);
+
         return new PropertyNameShorthand(this.getTreeLocation_(start),
                                          nameLiteral);
       }
+
+      if (this.strictMode_ && nameLiteral.isStrictKeyword())
+        this.reportReservedIdentifier_(nameLiteral);
     }
 
     if (name.type === COMPUTED_PROPERTY_NAME)
@@ -3317,7 +3321,7 @@ export class Parser {
 
     var token = name.literalToken;
     if (this.strictMode_ && token.isStrictKeyword())
-        this.reportReservedIdentifier_(token);
+      this.reportReservedIdentifier_(token);
 
     var binding = new BindingIdentifier(name.location, token);
     var initialiser = null;
@@ -3830,16 +3834,15 @@ export class Parser {
    * @return {void}
    * @private
    */
-  reportError_(var_args) {
-    if (arguments.length == 1) {
-      this.errorReporter_.reportError(this.scanner_.getPosition(),
-                                      arguments[0]);
+  reportError_(...args) {
+    if (args.length == 1) {
+      this.errorReporter_.reportError(this.scanner_.getPosition(), args[0]);
     } else {
-      var location = arguments[0];
+      var location = args[0];
       if (location instanceof Token) {
         location = location.location;
       }
-      this.errorReporter_.reportError(location.start, arguments[1]);
+      this.errorReporter_.reportError(location.start, args[1]);
     }
   }
 

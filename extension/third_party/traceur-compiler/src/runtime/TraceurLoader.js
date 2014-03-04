@@ -16,12 +16,21 @@
 import {InternalLoader} from '../runtime/InternalLoader';
 import {Loader} from '../runtime/Loader';
 
+var version = __moduleName.slice(0, __moduleName.indexOf('/'));
+
 export class TraceurLoader extends Loader {
 
   /**
    * @param {!Object=} loaderHooks
    */
   constructor(loaderHooks) {
+    if (loaderHooks.translateSynchronous) {
+      loaderHooks.translate = function(load) {
+        return new Promise((resolve, reject) => {
+          resolve(loaderHooks.translateSynchronous(load));
+        });
+      }
+    }
     super(loaderHooks);
   }
 
@@ -77,7 +86,7 @@ export class TraceurLoader extends Loader {
     var version = normalizedName.slice(0, slash);
     var at = version.indexOf('@');
     if (at !== -1) {
-      var semver = normalizedName.slice(at + 1, slash);
+      var semver = version.slice(at + 1);
       var m = this.semVerRegExp_().exec(semver);
       if (m) {
         var major = m[1];
@@ -92,6 +101,10 @@ export class TraceurLoader extends Loader {
     return map;
   }
 
+  get version() {
+    return version;
+  }
+
   /**
   * @return {Object} traceur-specific options object
   */
@@ -103,7 +116,24 @@ export class TraceurLoader extends Loader {
    * @param {string} normalizedName
    * @param {string} 'module' or 'script'
    */
-  sourceMap(normalizedName, type) {
-    return this.internalLoader_.sourceMap(normalizedName, type);
+  sourceMapInfo(normalizedName, type) {
+    return this.internalLoader_.sourceMapInfo(normalizedName, type);
+  }
+
+  /**
+   * @param {string} normalized name of module
+   * @param {Array<string>} unnormalized dependency names.
+   * @param {Function<Array<string>>} factory takes array of normalized names.
+   */
+  register(normalizedName, deps, factoryFunction) {
+    $traceurRuntime.ModuleStore.register(normalizedName, deps, factoryFunction);
+  }
+
+  get baseURL() {
+    return this.loaderHooks_.baseURL;
+  }
+
+  set baseURL(value) {
+    this.loaderHooks_.baseURL = value;
   }
 }

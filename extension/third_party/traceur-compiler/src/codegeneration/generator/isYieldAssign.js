@@ -12,16 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {parseStatement} from '../PlaceholderParser';
+import {
+  BINARY_OPERATOR,
+  YIELD_EXPRESSION
+} from '../../syntax/trees/ParseTreeType';
 
-export var ModuleRuntimeUtils = {
+/**
+ * @param {ParseTree} tree Expression tree
+ * @return {boolean}
+ */
+function isYieldAssign(tree) {
+  return tree.type === BINARY_OPERATOR &&
+      tree.operator.isAssignmentOperator() &&
+      tree.right.type === YIELD_EXPRESSION &&
+      tree.left.isLeftHandSideExpression();
+}
 
-  createModuleEvaluationStatement: function(normalizedName) {
-    return parseStatement `System.get(${normalizedName} +'')`;
-  },
-
-  createSystemVersionStatement: function(referrerName) {
-    return parseStatement `Object.defineProperty(System, 'version',
-        {get: function(){ return ${referrerName}}});`;
-  }
-};
+export default isYieldAssign;

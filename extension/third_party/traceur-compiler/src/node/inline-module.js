@@ -24,7 +24,6 @@ var TraceurLoader = traceur.runtime.TraceurLoader;
 var LoaderHooks = traceur.runtime.LoaderHooks;
 var Script = traceur.syntax.trees.Script;
 var SourceFile = traceur.syntax.SourceFile
-var ModuleRuntimeUtils =  traceur.codegeneration.module.ModuleRuntimeUtils;
 var moduleStore = traceur.runtime.ModuleStore;
 
 /**
@@ -79,10 +78,10 @@ function allLoaded(url, reporter, elements) {
  */
 function inlineAndCompile(filenames, options, reporter, callback, errback) {
 
-  // The caller needs to do a chdir.
-  var basePath = './';
   var depTarget = options && options.depTarget;
   var referrerName = options && options.referrer;
+
+  var basePath;
   if (referrerName) {
     // The compile occurs two directories down from current directory,
     // in src/node.  Thus the names will appear as eg ../src/x.
@@ -93,8 +92,9 @@ function inlineAndCompile(filenames, options, reporter, callback, errback) {
     // The basePath will replace options.referrer in our final filename.
     // Since we are in src/node, we need to back up two directories.
     basePath = path.join(__dirname, '../../');
+  } else {
+    basePath = path.resolve('./') + '/';
   }
-
   basePath = basePath.replace(/\\/g, '/');
 
   var scriptsCount = options.scripts.length;
@@ -109,30 +109,26 @@ function inlineAndCompile(filenames, options, reporter, callback, errback) {
         traceur.ModuleStore.normalize(name, referrerName);
     // Create tree for System.get('normalizedName');
     var tree =
-        ModuleRuntimeUtils.createModuleEvaluationStatement(normalizedName);
-    elements.push(tree);
-  }
-
-  function appendSystemVersion(elements, referrerName) {
-    var version = referrerName.split('/')[0];
-    var tree =
-        ModuleRuntimeUtils.createSystemVersionStatement(version);
+        traceur.codegeneration.module.createModuleEvaluationStatement(normalizedName);
     elements.push(tree);
   }
 
   function loadNext() {
     var loadAsScript = scriptsCount && (loadCount < scriptsCount);
+    var doEvaluateModule = false;
     var loadFunction = loader.import;
     var name = filenames[loadCount];
-    if (loadAsScript)
+    if (loadAsScript) {
       loadFunction = loader.loadAsScript;
-    else
+    } else {
       name = name.replace(/\.js$/,'');
-
+      if (options.modules !== 'inline' && options.modules !== 'instantiate')
+        doEvaluateModule = true;
+    }
     var loadOptions = {referrerName: referrerName};
     var codeUnit = loadFunction.call(loader, name, loadOptions).then(
         function() {
-          if (!loadAsScript && options.modules !== 'inline')
+          if (doEvaluateModule)
             appendEvaluateModule(name, referrerName);
           loadCount++;
           if (loadCount < filenames.length) {
@@ -140,8 +136,6 @@ function inlineAndCompile(filenames, options, reporter, callback, errback) {
           } else if (depTarget) {
             callback(null);
           } else {
-            if (referrerName)
-              appendSystemVersion(elements, referrerName);
             var tree = allLoaded(basePath, reporter, elements);
             callback(tree);
           }

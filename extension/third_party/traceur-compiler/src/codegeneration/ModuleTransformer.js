@@ -37,7 +37,6 @@ import {
   createIdentifierToken,
   createMemberExpression,
   createObjectLiteralExpression,
-  createUseStrictDirective,
   createVariableStatement
 } from './ParseTreeFactory';
 import {
@@ -80,17 +79,19 @@ export class ModuleTransformer extends TempVarTransformer {
     this.pushTempVarState();
 
     var statements = [
-      createUseStrictDirective(),
-      parseStatement `var __moduleName = ${this.moduleName};`,
       ...this.transformList(tree.scriptItemList),
       this.createExportStatement()
     ];
 
     this.popTempVarState();
 
-    statements = this.wrapModule(statements);
+    statements = this.wrapModule(this.moduleProlog().concat(statements));
 
     return new Script(tree.location, statements);
+  }
+
+  moduleProlog() {
+    return parseStatements `"use strict";var __moduleName = ${this.moduleName};`;
   }
 
   wrapModule(statements) {
@@ -104,8 +105,7 @@ export class ModuleTransformer extends TempVarTransformer {
               ${functionExpression});`;
     }
     return parseStatements
-        `$traceurRuntime.ModuleStore.registerModule(${this.moduleName},
-            ${functionExpression});`;
+        `System.register(${this.moduleName}, [], ${functionExpression});`;
   }
 
   /**

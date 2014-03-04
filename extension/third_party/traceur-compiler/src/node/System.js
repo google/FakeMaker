@@ -17,9 +17,10 @@
 var fs = require('fs');
 var traceur = require('./traceur.js');
 var nodeLoader = require('./nodeLoader.js');
+var path = require('path');
 var reporter = new traceur.util.ErrorReporter();
 var LoaderHooks = traceur.runtime.LoaderHooks;
-var url = './';
+var url = (path.resolve('./') + '/').replace(/\\/g, '/');
 var loaderHooks = new LoaderHooks(reporter, url, nodeLoader);
 
 var System = new traceur.runtime.TraceurLoader(loaderHooks);
@@ -30,8 +31,8 @@ global.System = System;
 // for the versions of the package.
 var referrerName = traceur.options.referrer;
 if (referrerName)
-  System.map = System.semverMap(referrerName);
-//else
-//  System.map = System.semverMap(System.version);
+	System.map = System.semverMap(referrerName);
+else
+	System.map = System.semverMap(System.version);
 
 module.exports = System;

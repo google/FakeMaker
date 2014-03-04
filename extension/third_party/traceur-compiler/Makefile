@@ -46,8 +46,13 @@ COMPILE_BEFORE_TEST = \
 	test/unit/semantics/FreeVariableChecker.generated.js \
 	test/unit/codegeneration/PlaceholderParser.generated.js
 
+
 MOCHA_OPTIONS = \
 	--ignore-leaks --ui tdd --require test/node-env.js
+
+ifdef ONLY
+	MOCHA_OPTIONS := $(MOCHA_OPTIONS) --grep $(ONLY)
+endif
 
 GIT_BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
 
@@ -67,7 +72,7 @@ test-runtime: bin/traceur-runtime.js $(RUNTIME_TESTS)
 test: test/test-list.js bin/traceur.js $(COMPILE_BEFORE_TEST) \
 	test/unit/runtime/traceur-runtime \
 	wiki test/amd-compiled test/commonjs-compiled test-interpret \
-	test-interpret-absolute test-inline-module-error
+	test-interpret-absolute test-inline-module-error test-interpret-throw
 	node_modules/.bin/mocha $(MOCHA_OPTIONS) $(TESTS)
 
 test/unit: bin/traceur.js bin/traceur-runtime.js
@@ -83,7 +88,7 @@ test/amd: test/amd-compiled
 	node_modules/.bin/mocha $(MOCHA_OPTIONS) test/node-amd-test.js
 
 test/features: bin/traceur.js bin/traceur-runtime.js test/test-list.js
-	node_modules/.bin/mocha $(MOCHA_OPTIONS) test/node-feature-test.js
+	node_modules/.bin/mocha $(MOCHA_OPTIONS) $(MOCHAX) test/node-feature-test.js
 
 test-list: test/test-list.js
 
@@ -92,6 +97,9 @@ test/test-list.js: force
 
 test-interpret: test/unit/runtime/test_interpret.js
 	./traceur $^
+
+test-interpret-throw: test/unit/runtime/throwsError.js
+	./traceur $^ 2>&1 | wc -l | grep '11'
 
 test-interpret-absolute: $(CURDIR)/test/unit/runtime/test_interpret.js
 	./traceur $^

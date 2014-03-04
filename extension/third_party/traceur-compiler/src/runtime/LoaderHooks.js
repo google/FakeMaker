@@ -45,11 +45,11 @@ var ERROR = 7;
 var identifierGenerator = new UniqueIdentifierGenerator();
 
 export class LoaderHooks {
-  constructor(reporter, rootUrl,
+  constructor(reporter, baseURL,
       fileLoader = webLoader,
       moduleStore = $traceurRuntime.ModuleStore) {
     this.reporter = reporter;
-    this.rootUrl_ = rootUrl;
+    this.baseURL_ = baseURL;
     this.moduleStore_ = moduleStore;
     this.fileLoader = fileLoader;
     this.exportListBuilder_ = new ExportListBuilder(this.reporter);
@@ -72,9 +72,12 @@ export class LoaderHooks {
       return normalizedName;
   }
 
-  // TODO Used for eval(): can we get the function call to supply callerURL?
-  rootUrl() {
-    return this.rootUrl_;
+  get baseURL() {
+    return this.baseURL_;
+  }
+
+  set baseURL(value) {
+    this.baseURL_ = String(value);
   }
 
   getModuleSpecifiers(codeUnit) {
@@ -94,7 +97,7 @@ export class LoaderHooks {
     assert(!codeUnit.metadata.tree);
     var reporter = this.reporter;
     var normalizedName = codeUnit.normalizedName;
-    var program = codeUnit.text;
+    var program = codeUnit.source;
     // For error reporting, prefer loader URL, fallback if we did not load text.
     var url = codeUnit.url || normalizedName;
     var file = new SourceFile(url, program);
@@ -119,12 +122,22 @@ export class LoaderHooks {
     return transformer.transform(transformedTree);
   }
 
-  fetch({address}, callback, errback) {
-    this.fileLoader.load(address, callback, errback);
+  fetch(load) {
+    return new Promise((resolve, reject) => {
+      this.fileLoader.load(load.address, resolve, reject);
+    });
+  }
+
+  translate(load) {
+    return new Promise((resolve, reject) => {
+      resolve(load.source);
+    });
   }
 
   instantiate({name, metadata, address, source, sourceMap}) {
-    return undefined;
+    return new Promise((resolve, reject) => {
+      resolve(undefined);
+    });
   }
 
   locate(load) {
@@ -147,7 +160,7 @@ export class LoaderHooks {
     if (isAbsolute(asJS))
       return asJS;
     var baseURL = load.metadata && load.metadata.baseURL;
-    baseURL = baseURL || this.rootUrl();
+    baseURL = baseURL || this.baseURL;
     if (baseURL) {
       load.metadata.baseURL = baseURL;
       return resolveUrl(baseURL, asJS);
@@ -160,8 +173,11 @@ export class LoaderHooks {
     if (load.metadata.locateMap) {
       trace += this.locateMapTrace(load);
     }
-    if (load.metadata.baseURL) {
-      trace += this.baseURLTrace(load);
+    var base = load.metadata.baseURL || this.baseURL;
+    if (base) {
+      trace += this.baseURLTrace(base);
+    } else {
+      trace += 'No baseURL\n';
     }
     return trace;
   }
@@ -171,8 +187,8 @@ export class LoaderHooks {
     return `LoaderHooks.locate found \'${map.pattern}\' -> \'${map.replacement}\'\n`;
   }
 
-  baseURLTrace(load) {
-    return 'LoaderHooks.locate resolved against \'' + load.metadata.baseURL + '\'\n';
+  baseURLTrace(base) {
+    return 'LoaderHooks.locate resolved against base \'' + base + '\'\n';
   }
 
   evaluateCodeUnit(codeUnit) {
