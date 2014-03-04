@@ -63,7 +63,7 @@ function urlIndexWIthOffsets(urlIndex, lineTable, enterOffset, callOffset) {
   return urlIndex + ': ' + enterOffset + ', ' + callOffset;
 }
 
-function decodeTraceToLineNumbers(calls, urls, sources) {
+function decodeTraceToOffsets(calls, urls, sources) {
   var numberOfCalls = calls.length;
   console.log('decodeTrace ' + numberOfCalls + ' calls');
   var currentSourceIndex;
@@ -142,7 +142,7 @@ function getEncodedTrace(callback, errback) {
 function getTrace(callback, errback) {
   getEncodedTrace(function(encodedTrace) {
     loadSources(encodedTrace.calls, encodedTrace.urls, function(calls, sources) {
-      callback(decodeTraceToLineNumbers(calls, encodedTrace.urls, sources));
+      callback(decodeTraceToOffsets(calls, encodedTrace.urls, sources));
     });
   }, errback);
 }
