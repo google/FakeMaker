@@ -283,24 +283,39 @@ tests['testArgumentsScoped'] = function() {
   return isSame(undefined, fakePlayer.startingObject().e) && json;
 }
 
+var GlobalsProxiedsrc = 'var proxiedTagName =  document.body.tagName;';
+
 tests['testGlobalsProxied'] = function() {
   var tagNameTrue = window.document.body.tagName;
   var ourConsole = console;
   // Transcode before creating the proxy
-  var src = 'var proxiedTagName =  document.body.tagName;';
-  var transcoded = transcode(src, 'fakeSrc.js');
+  var transcoded = transcode(GlobalsProxiedsrc, 'fakeSrc.js');
   console.log('transcoded: ' + transcoded);
 
   var fakeMaker = new FakeMaker();
   windowProxy = fakeMaker.makeFakeWindow();
-  var proxiedTagName = windowProxy.document.body.tagName;
   eval(transcoded);
 
   json.testGlobalsProxied = fakeMaker.toJSON();
 
-  ourConsole.log('window', JSON.parse(json.testGlobalsProxied));
-  var fakePlayer = new FakePlayer(json.testGlobalsProxied);
-  return isSame(tagNameTrue, fakePlayer.startingObject().document.body.tagName) && json;
+  ourConsole.log('testGlobalsProxied', JSON.parse(json.testGlobalsProxied));
+  saveJsonData('testGlobalsProxied', json);
+  return true;
+};
+
+tests['checkGlobalsProxied'] = function() {
+  var tagNameTrue = window.document.body.tagName;
+  var transcoded = transcode(GlobalsProxiedsrc, 'checkGlobalsProxied.js');
+  console.log('transcoded: ' + transcoded);
+  restoreJsonData('testGlobalsProxied', function(json) {
+    console.log('checkGlobalsProxied playback data: ', json)
+    var fakePlayer = new FakePlayer(json);
+    window.windowProxy = fakePlayer.startingObject();
+    fakePlayer.initialize();
+    eval(transcoded);
+    if (isSame(tagNameTrue, windowProxy.proxiedTagName))
+          pass();
+  });
 };
 
 tests['testNewCustomEvent'] = function() {
@@ -673,7 +688,7 @@ tests['documentAddEventListener'] = function() {
 var  checkedSrc = '';
 checkedSrc += 'var box = document.querySelector(".one-time input");\n';
 checkedSrc += 'window.run = function() {return box.checked;}\n';
-checkedSrc += 'window.run();\n';
+checkedSrc += 'window.checkedResult = window.run();\n';
 
 tests['checked'] = function() {
   var ourConsole = console;
@@ -702,7 +717,7 @@ tests['checkedPlayer'] = function() {
     var fakePlayer = new FakePlayer(json);
     window.windowProxy = fakePlayer.startingObject();
     fakePlayer.initialize();
-    if (isSame(true, eval(transcoded)))
+    if (isSame(windowProxy.checkedResult, eval(transcoded)))
       pass();
   });
 }
@@ -733,7 +748,8 @@ tests['checkedImplicitGlobalPrototype'] = function() {
     var fakePlayer = new FakePlayer(json);
     window.windowProxy = fakePlayer.startingObject();
     fakePlayer.initialize();
-    if (isSame(101, eval(transcoded)))
+    eval(transcoded);
+    if (isSame(101, windowProxy.testImplicitGlobalPrototypeResult))
       pass();
   });
 };
@@ -804,7 +820,7 @@ tests['checkbuiltInPrototype'] = function() {
   });
 };
 
-var globalFunctionDeclSrc = 'function runBench() { return 66; };\n(function (f){return f();}(runBench))';
+var globalFunctionDeclSrc = 'function runBench() { return 66; };\n(function (f){window.testGlobalFunctionDecl = f();}(runBench))';
 
 tests['testglobalFunctionDecl'] = function() {
   var ourConsole = console;
@@ -829,8 +845,8 @@ tests['checkglobalFunctionDecl'] = function() {
     var fakePlayer = new FakePlayer(json);
     window.windowProxy = fakePlayer.startingObject();
     fakePlayer.initialize();
-    var value = eval(transcoded);
-    if (isSame(66, value))
+    eval(transcoded);
+    if (isSame(66, windowProxy.testGlobalFunctionDecl))
       pass();
   });
 };
@@ -926,7 +942,7 @@ tests['checkLoadAddEventListener'] = function() {
 
 var  ElementIdsrc = '';
 ElementIdsrc += 'function elementId(element) { return element.id };\n';
-ElementIdsrc += 'elementId(oneTimeBindings);\n';
+ElementIdsrc += 'window.testElementId = elementId(oneTimeBindings);\n';
 
 tests['testElementId'] = function() {
   var ourConsole = console;
@@ -951,8 +967,8 @@ tests['checkElementId'] = function() {
     var fakePlayer = new FakePlayer(json);
     window.windowProxy = fakePlayer.startingObject();
     fakePlayer.initialize();
-    var result = eval(transcoded);
-    if (isSame('oneTimeBindings', result))
+    eval(transcoded);
+    if (isSame('oneTimeBindings', windowProxy.testElementId))
           pass();
   });
 };
@@ -961,7 +977,7 @@ var  BuiltInFunctionPropertysrc = '';
 BuiltInFunctionPropertysrc += '(function(global) {var hasIt = typeof HTMLTemplateElement !== "undefined";\n';
 BuiltInFunctionPropertysrc += 'HTMLTemplateElement.decorate = function(el, opt_instanceRef) {\n';
 BuiltInFunctionPropertysrc += '  return true;\n';
-BuiltInFunctionPropertysrc += '};return HTMLTemplateElement.decorate();\n})(window);\n';
+BuiltInFunctionPropertysrc += '};window.testBuiltInFunctionProperty = HTMLTemplateElement.decorate();\n})(window);\n';
 
 tests['testBuiltInFunctionProperty'] = function() {
   var ourConsole = console;
@@ -986,12 +1002,50 @@ tests['checkBuiltInFunctionProperty'] = function() {
     var fakePlayer = new FakePlayer(json);
     window.windowProxy = fakePlayer.startingObject();
     fakePlayer.initialize();
-    var result = eval(transcoded);
-    if (isSame(true, result))
+    eval(transcoded);
+    if (isSame(true, windowProxy.testBuiltInFunctionProperty))
           pass();
   });
 };
 
+var CreatedCallbackSrc = "var XBooPrototype = Object.create(HTMLElement.prototype);\n";
+CreatedCallbackSrc +=   "XBooPrototype.createdCallback = function() {\n";
+CreatedCallbackSrc +=   "  this.style.fontStyle = 'italic';\n";
+CreatedCallbackSrc +=   "}\n";
+CreatedCallbackSrc +=   "var XBoo = document.registerElement('x-boo', {\n";
+CreatedCallbackSrc +=   "  prototype: XBooPrototype\n";
+CreatedCallbackSrc +=   "});\n";
+CreatedCallbackSrc +=   "var xboo = new XBoo();\n";
+CreatedCallbackSrc +=   "window.testCreatedCallback = xboo.style.fontStyle";
+
+tests['testCreatedCallback'] = function() {
+  var ourConsole = console;
+  var transcoded = transcode(CreatedCallbackSrc, 'testCreatedCallback');
+  console.log('transcoded: ' + transcoded);
+  var fakeMaker = new FakeMaker();
+  windowProxy = fakeMaker.makeFakeWindow();
+  eval(transcoded);
+
+  json.testCreatedCallback = fakeMaker.toJSON();
+
+  ourConsole.log('testCreatedCallback', JSON.parse(json.testCreatedCallback));
+  saveJsonData('testCreatedCallback', json);
+  return true;
+}
+
+tests['checkCreatedCallback'] = function() {
+  var transcoded = transcode(CreatedCallbackSrc, 'checkCreatedCallback.js');
+  console.log('transcoded: ' + transcoded);
+  restoreJsonData('testCreatedCallback', function(json) {
+    console.log('checkCreatedCallback playback data: ', json)
+    var fakePlayer = new FakePlayer(json);
+    window.windowProxy = fakePlayer.startingObject();
+    fakePlayer.initialize();
+    var result = eval(transcoded);
+    if (isSame('italic', windowProxy.testCreatedCallback))
+          pass();
+  });
+};
 
 tests['testDetectEval'] = function() {
   var ourConsole = console;

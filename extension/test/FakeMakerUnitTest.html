@@ -91,7 +91,7 @@ this.Platform.performMicrotaskCheckpoint();
   };
   console.log('MDVBenchmark.prototype.__proto__', MDVBenchmark.prototype.__proto__ )
   console.log('window.Benchmark.prototype', window.Benchmark.prototype )
-  return MDVBenchmark(MDVBenchmark.prototype.foo);
+  window.testImplicitGlobalPrototypeResult = MDVBenchmark(MDVBenchmark.prototype.foo);
 })(this);
 </script>
 <script name="testForIn" type="text/fakeMaker">

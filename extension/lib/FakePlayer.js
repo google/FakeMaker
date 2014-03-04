@@ -7,7 +7,7 @@
 
 (function(global){
 
-var debug_player = false;
+var debug_player = true;
 
 function FakePlayer(json) {
   var fromJSON;
@@ -73,8 +73,11 @@ FakePlayer.prototype = {
 
   replayCallback: function(reply) {
     var callbackIndex = reply._callback_;
-    // oops where is the event?
-    return this.callbacks[callbackIndex]();
+    var callbackThisIndex = reply._callback_this;
+    if (typeof callbackThisIndex === 'number')
+      var theThis = this._rebuiltObjects[callbackThisIndex];
+    // TODO: where is the event?
+    return this.callbacks[callbackIndex].call(theThis);
   },
 
   replayFunction: function(reply) {
@@ -83,15 +86,13 @@ FakePlayer.prototype = {
       return this.replayCallback(reply);
 
     var fnc = function () {
-      fakePlayer.checkForCallback(arguments);
+      fakePlayer.checkForCallback(name, arguments);
       return fakePlayer.replay();  // as a function, we replay
     }
 
     var obj = this._rebuiltObjects[reply._fake_object_ref];
     Object.getOwnPropertyNames(obj).forEach(function(prop) {
-      if (fnc.hasOwnProperty(prop)) {
-        console.error('Overlap with function property ' + prop);
-      } else {
+      if (!fnc.hasOwnProperty(prop)) {  // TODO check for these when ?
         des = Object.getOwnPropertyDescriptor(obj, prop);
         Object.defineProperty(fnc, prop, des);
       }
@@ -155,9 +156,10 @@ FakePlayer.prototype = {
       var fakePlayer = this;
       if (!isAsync) {
         var callback = fakePlayer.callbacks[maybeEvent._callback_];
+        var theThis = fakePlayer._rebuiltObjects[maybeEvent._callback_this];
         if (debug_player)
           console.log('Calling at stack depth ' + (__F_.calls.length - 1), callback);
-        callback.call();
+        callback.call(theThis);
         if (debug_player)
           console.log('Replay at stack depth ' + (__F_.calls.length - 1), callback);
         var eventResult = fakePlayer.replay(path);
@@ -172,30 +174,50 @@ FakePlayer.prototype = {
       if (debug_player)
         console.log("check for async event " + path);
       if (maybeEvent && typeof maybeEvent._callback_ === 'number' && !maybeEvent._callback_depth) {
+        var asyncEvent = maybeEvent;
         var fakePlayer = this;
+        // We've found an async event. Move it from the replay queue to a setTimeout queue.
+        this._currentReplay += 2;
         setTimeout(function() {
           if (debug_player)
-            console.log('checkForEvent setTimeoutFired, callback #' + maybeEvent._callback_, maybeEvent, fakePlayer._recording[fakePlayer._currentReplay]);
-          if (maybeEvent === fakePlayer._recording[fakePlayer._currentReplay]) {
-            fakePlayer._currentReplay += 2;  // skip the callback we found.
-            var callback = fakePlayer.callbacks[maybeEvent._callback_];
-            callback.call();
-          }
+            console.log('checkForEvent setTimeoutFired, callback #' + asyncEvent._callback_, asyncEvent, fakePlayer._recording[fakePlayer._currentReplay]);
+          var callback = fakePlayer.callbacks[asyncEvent._callback_];
+          var theThis = fakePlayer._rebuiltObjects[asyncEvent._callback_this];
+          callback.call(theThis);
         });
       }
     }
   },
 
-  checkForCallback: function(args) {
-    for(var i = 0; i < args.length; i++) {
-      if (typeof args[i] === 'function')
-        this.callbacks.push(args[i]);
+  checkForCallback: function(name, args) {
+    if (name === 'registerElement') {
+      console.log('_fillShells ' + name);
+      var options = args[1];
+      if (options && options.prototype) {
+        FakeCommon.lifeCycleOperations.forEach(function(key) {
+          if (options.prototype[key])
+            this.callbacks.push(options.prototype[key]);
+        }.bind(this));
+      }
+    } else {
+      for(var i = 0; i < args.length; i++) {
+        if (typeof args[i] === 'function') {
+          if (debug_player)
+            console.log('checkForCallback found function at ' + i)
+          this.callbacks.push(args[i]);
+        }
+      }
     }
   },
 
   _rebuildObjectGraph: function(objReps) {
     this._rebuiltObjects = objReps.map(function(objRep) {
       return this._buildShells(objRep);
+    }.bind(this));
+    // During _nameShells we re-write function objects to close over 'name'
+    // needed for lifeCycleCallbacks.
+    objReps.forEach(function (objRep, index) {
+      this._nameShells(objRep, this._rebuiltObjects[index]);
     }.bind(this));
     objReps.forEach(function (objRep, index) {
       this._fillShells(objRep, this._rebuiltObjects[index]);
@@ -207,7 +229,7 @@ FakePlayer.prototype = {
     var shell;
     if (objRep._fake_function_) {
       shell = function() {
-        fakePlayer.checkForCallback(arguments);
+        fakePlayer.checkForCallback('(root)', arguments);
         return fakePlayer.replay('(root)');
       }
     } else {
@@ -216,24 +238,44 @@ FakePlayer.prototype = {
     return shell;
   },
 
+  _nameShells: function(objRep, shell) {
+    var fakePlayer = this;
+    Object.getOwnPropertyNames(objRep).forEach(function (name) {
+      var propertyRep = objRep[name];
+      if (propertyRep._fake_function_) {
+        // Write over the unnamed entry with a named version.
+        fakePlayer._rebuiltObjects[propertyRep._fake_object_ref] = function() {
+          fakePlayer.checkForCallback(name, arguments);
+          return fakePlayer.replay(name);
+        }
+      }
+    });
+  },
+
   _fillShells: function(objRep, shell) {
     var fakePlayer = this;
     Object.getOwnPropertyNames(objRep).forEach(function (name) {
-      var valueRep = objRep[name];
-      if (valueRep._do_not_proxy_function_) {
-        shell[name] = eval(valueRep._do_not_proxy_function_);
+      var propertyRep = objRep[name];
+      if (propertyRep._do_not_proxy_function_) {
+        shell[name] = eval(propertyRep._do_not_proxy_function_);
         return;
       }
-      if (valueRep._fake_object_ref) {
-        shell[name] = fakePlayer._rebuiltObjects[valueRep._fake_object_ref];
+      if (propertyRep._fake_function_) {
+        // Set the pointer.
+        shell[name] = fakePlayer._rebuiltObjects[propertyRep._fake_object_ref];
         return;
+      } else if (propertyRep._fake_object_ref) {
+        shell[name] = fakePlayer._rebuiltObjects[propertyRep._fake_object_ref];
+        return;
+      } else {
+        // values
+        Object.defineProperty(shell, name, {
+          get: function() {
+            fakePlayer.checkForCallback(name, arguments);
+            return fakePlayer.replay(name)
+          }
+        });
       }
-      Object.defineProperty(shell, name, {
-        get: function() {
-          fakePlayer.checkForCallback(arguments);
-          return fakePlayer.replay(name)
-        }
-      });
     });
   },
 

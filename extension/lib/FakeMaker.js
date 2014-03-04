@@ -8,7 +8,7 @@
 
 (function(){
 
-var _debug = false;
+var _debug = true;
 var maker_debug = _debug;
 var expando_debug = _debug;
 var accesses_debug = _debug;
@@ -56,32 +56,45 @@ function FakeMaker() {
     return result;
   }
 
-  this.nonDOM = {
-    addEventListener: function(fakeMaker, name, callback, capturing) {
-      // This function is called with the apply for eg dispatchEvent
-      function wrappedCallback(event) {
-        var path = name + '-event';
-        console.log('addEventListener wrappedCallback ' + path);
-        var eventProxy = fakeMaker._wrapReturnValue(event, event, path);
-        fakeMaker.startRecording(path);
-        fakeMaker._record(fakeMaker._getOrCreateObjectRef(event, path), path);
-        callback(eventProxy);
-        fakeMaker.stopRecording(path);
-      }
-      return this.addEventListener(name, wrappedCallback, capturing);
+  var deproxyArgsButProxyCallbacks = {
+    addEventListener: function(args, theThis, path) {
+      // addEventListener(event-name, callback, capture)  load events are considered async, click sync.
+      return [this.deproxyArg(args[0]), this._proxyACallback(args[1], theThis, path), this.deproxyArg(args[2])];
     },
-    setTimeout: function(callback, delay) {
-      function wrappedCallback(event) {
-        var path = 'setTimeout-event';
-        var eventProxy = fakeMaker._wrapReturnValue(event, event, path);
-        fakeMaker.startRecording(path);
-        fakeMaker._record(fakeMaker._getOrCreateObjectRef(event, path), path);
-        callback(eventProxy);
-        fakeMaker.stopRecording(path);
+    setTimeout: function(args, theThis, path) {
+      // setTimeout(callback, delay)
+      return [this._proxyACallback(args[0]), this.deproxyArg(args[1])];
+    },
+    registerElement: function(args, theThis, path) {
+      // registerElement(name, options)
+      var outputArgs = [this.deproxyArg(args[0])];
+      var options = args[1];
+      if (options) {
+        outputArgs[1] = Object.create(null);
+        if (options.prototype) {
+          var deproxiedPrototype = this.deproxyArg(options.prototype);
+          outputArgs[1].prototype = Object.create(deproxiedPrototype);
+          Object.getOwnPropertyNames(options.prototype).forEach(function(name) {
+            if (FakeCommon.lifeCycleOperations.indexOf(name) === -1) {
+              outputArgs[1].prototype[name] = this.deproxyArg(options.prototype[name]);
+            } else {
+              outputArgs[1].prototype[name] = this._proxyACallback(options.prototype[name], theThis, path, 'sync');
+            }
+          }.bind(this));
+        }
+        if (options.extends) {
+          outputArgs[1].extends = options.extends;
+        }
       }
-      return this.setTimeout(wrappedCallback, delay);
-    }
-  }
+      return outputArgs;
+    },
+  };
+  this._DOMFunctionsThatCallback = Object.create(null);
+  this._DOMFunctionsThatCallback.addEventListener = deproxyArgsButProxyCallbacks.addEventListener;
+  this._DOMFunctionsThatCallback.setTimeout = deproxyArgsButProxyCallbacks.setTimeout;
+  this._DOMFunctionsThatCallback.registerElement = deproxyArgsButProxyCallbacks.registerElement;
+  this._hasDOMCallbacks = [];
+  this._proxyForDOMCallbacks = [];
 }
 
 FakeMaker.prototype = {
@@ -275,6 +288,8 @@ FakeMaker.prototype = {
 
   // Append primitives, store objects and append their reference.
   _record: function(value, path) {
+    if (path === 'window.HTMLElement.prototype.constructor.name')
+      throw new Error("here")
     if (!this._active)
       return value;
     if (value && typeof value === 'object') {
@@ -290,7 +305,7 @@ FakeMaker.prototype = {
       this._recording.push(value);
     }
     if (recording_debug)
-      console.log("_record " + (this._recording.length - 1) + '@' + path, typeof value);
+      console.log("_record " + (this._recording.length - 1) + '@' + path + ' ' + (__F_.calls.length - 1), typeof value);
 
     this._recording.push(path + ' ' + (__F_.calls.length - 1));
     return value;
@@ -339,9 +354,11 @@ FakeMaker.prototype = {
       return result;
   },
 
-  _proxyACallback: function(callback, theThis, path) {
+  _proxyACallback: function(callback, theThis, path, sync) {
     if (calls_debug)
      console.log('_proxyACallback ' + path);
+   if (!path)
+    throw new Error('no path')
 
     var fakeMaker = this;
     fakeMaker._callbacks.push(callback);  // Assign a number to each callback.
@@ -353,13 +370,35 @@ FakeMaker.prototype = {
     return function() {
       if (calls_debug)
         console.log('_proxyACallback callback called ' + path + ' with depth ' + __F_.depth);
-      var fncProxy = fakeMaker._wrapReturnValue(callback, theThis, path);
+      var fncProxy = fakeMaker._wrapReturnValue(callback, this, path);
+
+      // In proxy.apply 'this' is already proxied because the apply was preceded by a get().
+      // But in callback apply here, the DOM has the 'this' object. So we need to proxy it to
+      // record the callback actions.
+      var proxyThis = fakeMaker._proxyObject(this, null, path);
+      var refThis = fakeMaker._getOrCreateFunctionObjectRef(this, path+'.this');
+
       var ref = fakeMaker._getOrCreateFunctionObjectRef(callback, path);
+      ref._callback_this = refThis._fake_object_ref;
       ref._callback_ = fakeMaker._callbacks.indexOf(callback);
-      ref._callback_depth = __F_.depth;
+      // The lifecycle events for custom elements are called synchronously but our
+      // the call stack depth will be zero because we don't transcode the caller.
+      ref._callback_depth = __F_.depth || sync;
       fakeMaker._record(ref, path + '-callback');
-      Reflect.apply(callback, theThis, arguments);
+
+      Reflect.apply(callback, proxyThis, arguments);
     }
+  },
+
+  deproxyArg: function(argMaybeProxy) {
+      var proxyIndex = this._proxiesOfObjects.indexOf(argMaybeProxy);
+      if (calls_debug)
+        console.log('arg is proxy at ' + proxyIndex);
+
+      if (proxyIndex === -1)
+        return argMaybeProxy;
+      else
+        return this._proxiedObjects[proxyIndex];
   },
 
   deproxyArgs: function(args, theThis, path) {
@@ -367,15 +406,8 @@ FakeMaker.prototype = {
     return args.map(function(argMaybeProxy, index) {
       if (typeof argMaybeProxy === 'function')
         return fakeMaker._proxyACallback(argMaybeProxy, theThis, path);
-
-      var proxyIndex = fakeMaker._proxiesOfObjects.indexOf(argMaybeProxy);
-      if (calls_debug)
-        console.log('arg ' + index + ' is proxy at ' + proxyIndex);
-
-      if (proxyIndex === -1)
-       return argMaybeProxy;
       else
-        return fakeMaker._proxiedObjects[proxyIndex];
+        return fakeMaker.deproxyArg(argMaybeProxy);
     });
   },
 
@@ -398,11 +430,11 @@ FakeMaker.prototype = {
 
   getExpandoProperty: function(obj, name) {
     if (expando_debug) console.log('looking for expando ' + name);
-
+if (name === 'constructor')
+  debugger;
     var indexOfProxy = this._proxiedObjects.indexOf(obj);
     if (!(indexOfProxy !== -1)) {
       console.log('getExpandoProperty typeof obj: ' + (obj ? typeof(obj) : 'null') + ' name ' + name);
-      console.log('getExpandoProperty constructor name : ' + obj.constructor.name);
       console.log('getExpandoProperty obj: ' + Object.getOwnPropertyNames(obj).join(','));
       throw new Error('getExpandoProperty Assert FAILS indexOfProxy !== -1 for name ' + name);
     }
@@ -507,7 +539,8 @@ FakeMaker.prototype = {
 
       // target[name] or getter
       get: function(target, name, receiver) { // target is bound to the shadow object
-
+if (typeof obj === 'function' && name === 'name')
+  throw new Error('get;')
         // Is this a DOM operation needed for JS to work correctly?
         var dontProxy = fakeMaker._dontProxy(path, obj, name);
         if (dontProxy)
@@ -578,6 +611,16 @@ FakeMaker.prototype = {
           }
           result = descriptor.value;
         }
+        // Apply will need to process callbacks before they go into the DOM. But it does not
+        // know the name of the function it calls. So we check the name here and mark the shadow/target for apply
+        if(name in fakeMaker._DOMFunctionsThatCallback) {
+          var indexOfResult = fakeMaker._proxiesOfObjects.indexOf(result);
+          console.log(name + ' isA _DOMFunctionsThatCallback' + path + ' pushing ' + (typeof result) + ' isAProxy ' + fakeMaker.isAProxy(result) + ' index ' + indexOfResult );
+          fakeMaker._hasDOMCallbacks.push(result);
+          fakeMaker._proxyForDOMCallbacks.push(fakeMaker._DOMFunctionsThatCallback[name].bind(fakeMaker));
+          console.log('now ----------------------------------------' +fakeMaker._hasDOMCallbacks.length);
+        }
+
         return result;
       },
 
@@ -595,7 +638,7 @@ FakeMaker.prototype = {
             if (obj === window) {
               fakeMaker._setExpandoGlobals.push(name);
               if (expando_debug)
-                console.log('set found window expando ' + name, value)
+                console.log('set found window expando ' + name, typeof(value));
             }
           } else {
             fakeMaker.registerExpando(obj, name);
@@ -612,6 +655,9 @@ FakeMaker.prototype = {
         }
 
         obj[name] = value;
+
+        // Mark access so the property appears on our fake in the player.
+        fakeMaker._markAccess(indexOfProxy, name);
 
         if (get_set_debug) {
           var descriptor = fakeMaker._getPropertyDescriptor(obj, name);
@@ -634,7 +680,18 @@ FakeMaker.prototype = {
             // these records will not be replayed. So we pass original objects except
             // for callback functions.
             var deproxiedTheThis = fakeMaker.toObject(theThis);
-            var deproxiedArgs = fakeMaker.deproxyArgs(args, deproxiedTheThis, path);
+            var deproxyArgs;
+            var indexOfProxy = fakeMaker._proxiedObjects.indexOf(obj);
+            var proxy = fakeMaker._proxiesOfObjects[indexOfProxy];
+            var hasDOMCallbacks = fakeMaker._hasDOMCallbacks.indexOf(proxy);
+            if (calls_debug) {
+              console.log('apply: ' + path + ' proxy index  ', indexOfProxy + ' isA ' + (typeof proxy) + ' isAProxy ' + fakeMaker.isAProxy(proxy));
+              console.log('apply: ' + path + ' __DOMFunctionsThatCallback ', hasDOMCallbacks);
+            }
+            if (hasDOMCallbacks !== -1)
+              deproxiedArgs = fakeMaker._proxyForDOMCallbacks[hasDOMCallbacks](args, deproxiedTheThis, path);
+            else
+              deproxiedArgs = fakeMaker.deproxyArgs(args, deproxiedTheThis, path);
 
             if (calls_debug) {
               console.log("apply with this: "+ fakeMaker.classNameIfPossible(deproxiedTheThis) +", args " + deproxiedArgs.length);
@@ -645,8 +702,8 @@ FakeMaker.prototype = {
             return Reflect.apply(obj, deproxiedTheThis, deproxiedArgs);
           });
         } catch(e) {
-          console.log('_proxyFunction.apply FAILS ' + e, e.stack);
-          console.log('_proxyFunction.apply ' + path + ' obj:' + obj.constructor.toString() + ' theThis:' + fakeMaker.classNameIfPossible(theThis));
+          console.error('_proxyFunction.apply FAILS ' + e);
+          console.error('_proxyFunction.apply ' + path + ' obj:' +fakeMaker.classNameIfPossible(obj) + ' theThis:' + fakeMaker.classNameIfPossible(theThis));
         }
       },
 
@@ -660,7 +717,20 @@ FakeMaker.prototype = {
               console.log('construct args ['+index +'] ' + typeof(arg));
             });
           }
-          var returnValue = new obj(deproxiedArgs[0], deproxiedArgs[1], deproxiedArgs[2], deproxiedArgs[3]);
+          // We can't use Reflect.construct because "DOM object constructor cannot be called as a function."
+          var returnValue;
+          if (args.length === 0)
+            returnValue = new obj();
+          else if (args.length === 1)
+            returnValue = new obj(deproxiedArgs[0]);
+          else if (args.length === 2)
+            returnValue = new obj(deproxiedArgs[0], deproxiedArgs[1]);
+          else if (args.length === 3)
+            returnValue = new obj(deproxiedArgs[0], deproxiedArgs[1], deproxiedArgs[2]);
+          else if (args.length === 4)
+            returnValue = new obj(deproxiedArgs[0], deproxiedArgs[1], deproxiedArgs[2], deproxiedArgs[3]);
+          else
+            returnValue = Reflect.construct(obj, deproxiedArgs);
           if (calls_debug) console.log("construct result " + typeof(returnValue));
           return returnValue;
         });
@@ -678,7 +748,7 @@ FakeMaker.prototype = {
     var mark = obj;
     while (mark) {
       originalProperties = originalProperties.concat(Object.getOwnPropertyNames(mark));
-      mark = mark.__proto__;
+      mark = fakeMaker.toObject(mark.__proto__);
     }
 
     this._originalProperties[indexOfProxy] = originalProperties;

@@ -18,6 +18,9 @@ var FakeCommon = {
   'Uint16Array', 'ReferenceError', 'String', 'eval', 'Boolean', 'console', 'Map'],
 
   // window functions that we don't want to record.
-  nonDOM: ['addEventListener', 'setTimeout']
+  nonDOM: ['addEventListener', 'setTimeout'],
+
+  //  Wrap the callback functions passed into the DOM functions but de-proxy other args.
+  lifeCycleOperations: ['createdCallback', 'enteredViewCallback', 'leftViewCallback', 'attributeChangedCallback'],
 };
 
