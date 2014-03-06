@@ -158,7 +158,6 @@ tests['testProto'] = function() {
   function Foo() {};
   Foo.prototype = {
     baz: function() {
-      console.assert(this === objWithPrototype);
       return 4;
     }
   };
@@ -1043,6 +1042,44 @@ tests['checkCreatedCallback'] = function() {
     fakePlayer.initialize();
     var result = eval(transcoded);
     if (isSame('italic', windowProxy.testCreatedCallback))
+          pass();
+  });
+};
+
+
+var UpgradeCallbackSrc = "var UpgradePrototype = Object.create(HTMLElement.prototype);\n";
+UpgradeCallbackSrc +=   "UpgradePrototype.createdCallback = function() {\n";
+UpgradeCallbackSrc +=   "    window.testUpgradeCallback = this.getAttribute('name');\n";
+UpgradeCallbackSrc +=   "}\n";
+UpgradeCallbackSrc +=   "document.registerElement('polymer-element', {\n";
+UpgradeCallbackSrc +=   "  prototype: UpgradePrototype\n";
+UpgradeCallbackSrc +=   "});\n";
+
+tests['testUpgradeCallback'] = function() {
+  var ourConsole = console;
+  var transcoded = transcode(UpgradeCallbackSrc, 'testUpgradeCallback.js');
+  console.log('transcoded: ' + transcoded);
+  var fakeMaker = new FakeMaker();
+  windowProxy = fakeMaker.makeFakeWindow();
+  eval(transcoded);
+
+  json.testUpgradeCallback = fakeMaker.toJSON();
+
+  ourConsole.log('testUpgradeCallback', JSON.parse(json.testUpgradeCallback));
+  saveJsonData('testUpgradeCallback', json);
+  return true;
+}
+
+tests['checkUpgradeCallback'] = function() {
+  var transcoded = transcode(UpgradeCallbackSrc, 'checkUpgradeCallback.js');
+  console.log('transcoded: ' + transcoded);
+  restoreJsonData('testUpgradeCallback', function(json) {
+    console.log('checkUpgradeCallback playback data: ', json)
+    var fakePlayer = new FakePlayer(json);
+    window.windowProxy = fakePlayer.startingObject();
+    fakePlayer.initialize();
+    var result = eval(transcoded);
+    if (isSame('code-mirror', windowProxy.testUpgradeCallback))
           pass();
   });
 };
