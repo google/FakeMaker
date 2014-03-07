@@ -213,8 +213,6 @@ export class ParseTreeWriter extends ParseTreeVisitor {
       this.currentLineComment_ = `Line: ${line}.${column}`;
     }
 
-    this.currentLocation = tree.location;
-
     super.visitAny(tree);
 
     // set background color to normal
@@ -1055,8 +1053,10 @@ export class ParseTreeWriter extends ParseTreeVisitor {
    */
   visitTemplateLiteralExpression(tree) {
     // Template Literals have important whitespace semantics.
-    this.visitAny(tree.operand);
-    this.writeSpace_();
+    if (tree.operand) {
+      this.visitAny(tree.operand);
+      this.writeSpace_();
+    }
     this.writeRaw_(BACK_QUOTE);
     this.visitList(tree.elements);
     this.writeRaw_(BACK_QUOTE);
