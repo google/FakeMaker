@@ -31,6 +31,7 @@ function FakeMaker() {
   this._expandoProperties = [];
   this._originalProperties = []; // object keys when proxy first created.
   this._setExpandoGlobals = [];
+  this._expandoPrototypes = [];
 
   this._callbacks = [];
 
@@ -66,21 +67,47 @@ function FakeMaker() {
       return [this._proxyACallback(args[0]), this.deproxyArg(args[1])];
     },
     registerElement: function(args, theThis, path) {
+      var fakeMaker = this;
       // registerElement(name, options)
       var outputArgs = [this.deproxyArg(args[0])];
       var options = args[1];
       if (options) {
         outputArgs[1] = Object.create(null);
         if (options.prototype) {
+          // We need to proxy just the lifeCycleCallbacks for the prototype. But this
+          // prototype is likely chained on some DOM prototype.  Find the cross over.
           var deproxiedPrototype = this.deproxyArg(options.prototype);
-          outputArgs[1].prototype = Object.create(deproxiedPrototype);
-          Object.getOwnPropertyNames(options.prototype).forEach(function(name) {
-            if (FakeCommon.lifeCycleOperations.indexOf(name) === -1) {
-              outputArgs[1].prototype[name] = this.deproxyArg(options.prototype[name]);
+          var firstDOMPrototype = null;
+          var userPrototypes = [];
+          fakeMaker._someProtos(deproxiedPrototype, function(proto) {
+            if (fakeMaker.isAProxy(proto)) {
+              firstDOMPrototype = proto;
             } else {
-              outputArgs[1].prototype[name] = this._proxyACallback(options.prototype[name], theThis, path + '.' + name, 'sync');
+              userPrototypes.push(proto);
             }
-          }.bind(this));
+          }, path +'.prototype');
+
+          // Rebuild the chain, wrapping the lifecyle callbacks.
+          var prototype = Object.create(firstDOMPrototype);
+          userPrototypes.reverse();
+          userPrototypes.forEach(function(proto) {
+            prototype = Object.create(prototype);
+            Object.getOwnPropertyNames(proto).forEach(function(name) {
+              if (FakeCommon.lifeCycleOperations.indexOf(name) === -1) {
+                prototype[name] = fakeMaker.deproxyArg(proto[name]);
+              } else {
+                prototype[name] = fakeMaker._proxyACallback(proto[name], theThis, path + '.' + name, 'sync');
+              }
+            });
+            if (calls_debug)
+              console.log('registerElement rewrote ' + Object.getOwnPropertyNames(prototype).join(', '));
+          });
+
+          // Behind our back JS+DOM will make an expando property __proto__ of any newed
+          // custom elements and set it to the object value of prototype. Record these objects
+          // to avoid faking them.
+          this._expandoPrototypes.push(prototype);
+          outputArgs[1].prototype = prototype;
         }
         if (options.extends) {
           outputArgs[1].extends = options.extends;
@@ -382,9 +409,9 @@ FakeMaker.prototype = {
       // In normal proxy.apply, 'this' is already proxied because the .apply was preceded by a .get().
       // But in callback apply here, the DOM has the 'this' object. So we need to proxy it to
       // record the callback actions.
-      var proxyThis = fakeMaker._proxyObject(this, null, path);
+      var proxyThis = fakeMaker._proxyObject(this, null, path + '.this');
       if (calls_debug)
-        console.log('_proxyACallback entering callback');
+        console.log('_proxyACallback entering callback with this proxyIndex ' + fakeMaker._proxiesOfObjects.indexOf(proxyThis));
       callback.apply(proxyThis, arguments);
     }
   },
@@ -423,7 +450,7 @@ FakeMaker.prototype = {
       expandos[name] = true;
       if (expando_debug) {
         console.log('registered expando property ' + name +
-          ' of ' + Object.keys(expandos).length);
+          ' of  proxy at ' + indexOfProxy);
       }
   },
 
@@ -680,44 +707,39 @@ FakeMaker.prototype = {
 
       // target.apply(thisArg, args)
       apply: function(target, thisArg, args) {
-        try {
-          if (calls_debug) {
-            console.log('apply: theThis === window: ' + (theThis === window));
-            console.log('apply: thisArg === window: ' + (thisArg === window));
-            console.log('apply: obj === window: ' + (obj === window));
-          }
-          return fakeMaker._wrapCallResult(obj, path + '()', function() {
-            // If we now call a DOM function it could operate on the proxy and cause
-            // records to be created; In the player there will be no DOM function and
-            // these records will not be replayed. So we pass original objects except
-            // for callback functions.
-            var deproxiedTheThis = fakeMaker.toObject(theThis);
-            deproxiedTheThis = deproxiedTheThis || theThis;
-            var deproxyArgs;
-            var indexOfProxy = fakeMaker._proxiedObjects.indexOf(obj);
-            var proxy = fakeMaker._proxiesOfObjects[indexOfProxy];
-            var hasDOMCallbacks = fakeMaker._hasDOMCallbacks.indexOf(proxy);
-            if (calls_debug) {
-              console.log('apply: ' + path + ' proxy index  ', indexOfProxy + ' isA ' + (typeof proxy) + ' isAProxy ' + fakeMaker.isAProxy(proxy));
-              console.log('apply: ' + path + ' __DOMFunctionsThatCallback ', hasDOMCallbacks);
-            }
-            if (hasDOMCallbacks !== -1)
-              deproxiedArgs = fakeMaker._proxyForDOMCallbacks[hasDOMCallbacks](args, deproxiedTheThis, path);
-            else
-              deproxiedArgs = fakeMaker.deproxyArgs(args, deproxiedTheThis, path);
-
-            if (calls_debug) {
-              console.log("apply with this: "+ typeof(deproxiedTheThis) + ' isAProxy ' + fakeMaker.isAProxy(deproxiedTheThis) + ", args " + deproxiedArgs.length);
-              deproxiedArgs.forEach(function(arg, index) {
-                console.log('apply ['+index +']=' + typeof(arg));
-              });
-            }
-            return Reflect.apply(obj, deproxiedTheThis, deproxiedArgs);
-          });
-        } catch(e) {
-          console.error('_proxyFunction.apply FAILS ' + e);
-          console.error('_proxyFunction.apply ' + path + ' obj:' +fakeMaker.classNameIfPossible(obj) + ' theThis:' + fakeMaker.classNameIfPossible(theThis));
+        if (calls_debug) {
+          console.log('apply: thisArg === window: ' + (thisArg === window));
+          console.log('apply: thisArg === window: ' + (thisArg === window));
+          console.log('apply: obj === window: ' + (obj === window));
         }
+        return fakeMaker._wrapCallResult(obj, path + '()', function() {
+          // If we now call a DOM function it could operate on the proxy and cause
+          // records to be created; In the player there will be no DOM function and
+          // these records will not be replayed. So we pass original objects except
+          // for callback functions.
+          var deproxiedthisArg = fakeMaker.toObject(thisArg);
+          deproxiedthisArg = deproxiedthisArg || thisArg;
+          var deproxyArgs;
+          var indexOfProxy = fakeMaker._proxiedObjects.indexOf(obj);
+          var proxy = fakeMaker._proxiesOfObjects[indexOfProxy];
+          var hasDOMCallbacks = fakeMaker._hasDOMCallbacks.indexOf(proxy);
+          if (calls_debug) {
+            console.log('apply: ' + path + ' proxy index  ', indexOfProxy + ' isA ' + (typeof proxy) + ' isAProxy ' + fakeMaker.isAProxy(proxy));
+            console.log('apply: ' + path + ' __DOMFunctionsThatCallback ', hasDOMCallbacks);
+          }
+          if (hasDOMCallbacks !== -1)
+            deproxiedArgs = fakeMaker._proxyForDOMCallbacks[hasDOMCallbacks](args, deproxiedthisArg, path);
+          else
+            deproxiedArgs = fakeMaker.deproxyArgs(args, deproxiedthisArg, path);
+
+          if (calls_debug) {
+            console.log("apply with this: "+ typeof(deproxiedthisArg) + ' proxyIndex: ' + fakeMaker._proxiesOfObjects.indexOf(thisArg) + ", args " + deproxiedArgs.length);
+            deproxiedArgs.forEach(function(arg, index) {
+              console.log('apply ['+index +']=' + typeof(arg));
+            });
+          }
+          return Reflect.apply(obj, deproxiedthisArg, deproxiedArgs);
+        });
       },
 
       // new target(args)
@@ -757,7 +779,14 @@ FakeMaker.prototype = {
     // our new object as proxied.
     var originalProperties = [];
     fakeMaker._someProtos(obj, function(proto) {
+      if (fakeMaker._expandoPrototypes.indexOf(proto) !== -1) {
+        if (maker_debug)
+          console.log('Dropping proto found in _expandoPrototypes ' + path + ' skipping ' + Object.getOwnPropertyNames(proto).join(','));
+        return;
+      }
       originalProperties = originalProperties.concat(Object.getOwnPropertyNames(proto));
+      if (originalProperties.indexOf('init') !== -1)
+        console.error('oops init ' + proto.init)
     }, path);
 
     var indexOfProxy = this._registerProxyObject(obj, theThis, proxy);

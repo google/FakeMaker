@@ -1084,6 +1084,47 @@ tests['checkUpgradeCallback'] = function() {
   });
 };
 
+var UpgradeDeepSrc = "var UpgradePrototype = Object.create(HTMLElement.prototype);\n";
+UpgradeDeepSrc +=   "UpgradePrototype.createdCallback = function() {\n";
+UpgradeDeepSrc +=   "    console.log('this', this.getAttribute('name'));\n";
+UpgradeDeepSrc +=   "    this.init();\n";
+UpgradeDeepSrc +=   "}\n";
+UpgradeDeepSrc +=   "UpgradePrototype.init = function() {\n";
+UpgradeDeepSrc +=   "    window.testUpgradeDeep = this.getAttribute('name');\n";
+UpgradeDeepSrc +=   "}\n";
+UpgradeDeepSrc +=   "document.registerElement('polymer-element', {\n";
+UpgradeDeepSrc +=   "  prototype: UpgradePrototype\n";
+UpgradeDeepSrc +=   "});\n";
+
+tests['testUpgradeDeep'] = function() {
+  var ourConsole = console;
+  var transcoded = transcode(UpgradeDeepSrc, 'testUpgradeDeep.js');
+  console.log('transcoded: ' + transcoded);
+  var fakeMaker = new FakeMaker();
+  windowProxy = fakeMaker.makeFakeWindow();
+  eval(transcoded);
+
+  json.testUpgradeDeep = fakeMaker.toJSON();
+
+  ourConsole.log('testUpgradeDeep', JSON.parse(json.testUpgradeDeep));
+  saveJsonData('testUpgradeDeep', json);
+  return true;
+}
+
+tests['checkUpgradeDeep'] = function() {
+  var transcoded = transcode(UpgradeDeepSrc, 'checkUpgradeDeep.js');
+  console.log('transcoded: ' + transcoded);
+  restoreJsonData('testUpgradeDeep', function(json) {
+    console.log('checkUpgradeDeep playback data: ', json)
+    var fakePlayer = new FakePlayer(json);
+    window.windowProxy = fakePlayer.startingObject();
+    fakePlayer.initialize();
+    var result = eval(transcoded);
+    if (isSame('code-mirror', windowProxy.testUpgradeDeep))
+          pass();
+  });
+};
+
 tests['testDetectEval'] = function() {
   var ourConsole = console;
   // Transcode before creating the proxy

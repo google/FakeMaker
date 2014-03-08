@@ -7,7 +7,7 @@
 
 (function(global){
 
-var debug_player = true;
+var debug_player = false;
 
 function FakePlayer(json) {
   var fromJSON;
@@ -54,8 +54,6 @@ FakePlayer.prototype = {
     FakeCommon.chromeBuiltins.forEach(function(name) {
       window.windowProxy[name] = window[name];
     });
-    if (debug_player)
-      console.log('nonDOM ' + FakeCommon.nonDOM.join(','))
   },
 
   startingObject: function () {
@@ -158,7 +156,7 @@ FakePlayer.prototype = {
         var callback = fakePlayer.callbacks[maybeEvent._callback_];
         var theThis = fakePlayer._rebuiltObjects[maybeEvent._callback_this];
         if (debug_player)
-          console.log('Calling at stack depth ' + (__F_.calls.length - 1), callback);
+          console.log('Calling at stack depth ' + (__F_.calls.length - 1) + ' with this ref ' + maybeEvent._callback_this, callback);
         callback.call(theThis);
         if (debug_player)
           console.log('Replay at stack depth ' + (__F_.calls.length - 1), callback);
@@ -191,12 +189,25 @@ FakePlayer.prototype = {
 
   checkForCallback: function(name, args) {
     if (name === 'registerElement') {
-      console.log('_fillShells ' + name);
+      if (debug_player)
+        console.log('checkForCallback found ' + name);
       var options = args[1];
       if (options && options.prototype) {
         FakeCommon.lifeCycleOperations.forEach(function(key) {
-          if (options.prototype[key])
-            this.callbacks.push(options.prototype[key]);
+          if (options.prototype[key]) {
+            function lifeCycleWrapper() {
+              // The 'this' incoming has getters for DOM operations
+              var extendedThis = Object.create(this)
+              Object.getOwnPropertyNames(options.prototype).forEach(function(name) {
+                extendedThis[name] = options.prototype[name];
+              });
+
+              options.prototype[key].apply(extendedThis, arguments);
+            }
+            this.callbacks.push(lifeCycleWrapper);
+            if (debug_player)
+              console.log('checkForCallback found ' + key + ' under ' + name + ' and stored it a ' + (this.callbacks.length -1), options.prototype[key]);
+          }
         }.bind(this));
       }
     } else {
