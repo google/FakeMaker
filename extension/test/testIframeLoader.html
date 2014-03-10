@@ -1,0 +1,14 @@
+<body></body>
+<script>
+      var loader = '<script>console.log("Hello from " + window.location.href);</scr' + 'ipt>\n';
+      function load() {
+        f = document.createElement('iframe');
+        f.style.display = 'none';
+        document.body.appendChild(f);
+        var d = f.contentWindow ? f.contentWindow.document : (f.contentDocument.document ? f.contentDocument.document : f.contentDocument);
+        d.open();
+        d.write(loader);
+        d.close();
+      }
+      load();
+</script>
