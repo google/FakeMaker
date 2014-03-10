@@ -109,11 +109,24 @@ function loadSources(calls, urls, callback) {
   var sources = [];
   urls.forEach(function(url, index) {
     var resource = resourceByURL[url];
-    if (resource) {
-      resource.getContent(function(content) {
+    var wrappedCallback = function(content) {
         sources[index] = content;
         if (!--remaining)
           callback(calls, sources);
+    }
+    if (resource) {
+      resource.getContent(function(content) {
+        if (content) {
+          wrappedCallback(content);
+        } else {
+          loadOneByXHR(url, function(content) {
+            if (content) {
+              wrappedCallback(content);
+            } else {
+              throw new Error("TraceDecoder.loadSources failed to load " + url);
+            }
+          });
+        }
       });
     } else {
       if (!--remaining)
