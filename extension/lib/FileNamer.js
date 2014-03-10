@@ -1,11 +1,13 @@
 // Google BSD license http://code.google.com/google_bsd_license.html
 // Copyright 2014 Google Inc. johnjbarton@google.com
 
-var noTranscode = '// .noTranscode';
+var noTranscode = '// .noTranscode  ';
 window.evalish = 0;
+window.__unique_transcoding_urls = {};
 
 export function fileNamer(src, url, fncName) {
-  if (src.slice(0, noTranscode.length) === noTranscode)
+  // While checking for noTranscode allow a IIFE prefix
+  if (src.slice(0, noTranscode.length + 80).indexOf('noTranscode') !== -1)
         return;
   if (url.lastIndexOf('/') === url.length - 1)
     url += 'index.html';
@@ -17,5 +19,10 @@ export function fileNamer(src, url, fncName) {
 }
 
 export function fileRenamer(url) {
-  return url.replace(/\.js$/, '.ps').replace(/\.html$/, '.ps');
+  var transcodingURL = url.replace(/\.js$/, '.ps').replace(/\.html$/, '.ps');
+  if (window.__unique_transcoding_urls[transcodingURL]) {
+    transcodingURL = transcodingURL.replace(/\.ps$/, '.' + (window.evalish++) + '.ps');
+  }
+  window.__unique_transcoding_urls[transcodingURL] = true;
+  return transcodingURL;
 }
