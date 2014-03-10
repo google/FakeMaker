@@ -123,7 +123,20 @@ suite('context test', function() {
         function(error, stdout, stderr) {
           assert.isNull(error);
           var source = fs.readFileSync(tempFileName, 'utf-8');
-          // verify that the output is an assignment of a module.
+          var result = eval(source);
+          assert.equal(result, true);
+          done();
+        });
+  });
+
+  test('script option loads .es file', function(done) {
+    tempFileName = resolve(uuid.v4() + '.js');
+    var executable = 'node ' + resolve('src/node/command.js');
+    var inputFileName = './unit/node/resources/iAmScriptAlso.es';
+    exec(executable + ' --out ' + tempFileName + ' --script ' + inputFileName,
+        function(error, stdout, stderr) {
+          assert.isNull(error);
+          var source = fs.readFileSync(tempFileName, 'utf-8');
           var result = eval(source);
           assert.equal(result, true);
           done();
@@ -152,8 +165,8 @@ suite('context test', function() {
       assert.isNull(error);
       var fileContents = fs.readFileSync(path.resolve(outDir, 'file.js'));
       var depContents = fs.readFileSync(path.resolve(outDir, 'dep.js'));
-      assert.equal(fileContents + '', "\"use strict\";\nvar __moduleName = \"./unit/node/resources/compile-dir/file\";\nvar q = require('./dep').q;\nvar p = 'module';\nmodule.exports = {get p() {\n    return p;\n  }};\n");
-      assert.equal(depContents + '', "\"use strict\";\nvar __moduleName = \"./unit/node/resources/compile-dir/dep\";\nvar q = 'q';\nmodule.exports = {get q() {\n    return q;\n  }};\n");
+      assert.equal(fileContents + '', "\"use strict\";\nvar __moduleName = \"./unit/node/resources/compile-dir/file\";\nvar q = require('./dep').q;\nvar p = 'module';\nmodule.exports = {\n  get p() {\n    return p;\n  },\n  __esModule: true\n};\n");
+      assert.equal(depContents + '', "\"use strict\";\nvar __moduleName = \"./unit/node/resources/compile-dir/dep\";\nvar q = 'q';\nmodule.exports = {\n  get q() {\n    return q;\n  },\n  __esModule: true\n};\n");
       done();
     });
   })
