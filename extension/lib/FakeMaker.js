@@ -771,6 +771,10 @@ FakeMaker.prototype = {
         });
       },
 
+      // DOM object properties enumeration fails on Chrome, so we have to use the Reflect version.
+      enumerate: function(target) {
+        return Reflect.enumerate(obj);
+      },
     });
 
     if (maker_debug)

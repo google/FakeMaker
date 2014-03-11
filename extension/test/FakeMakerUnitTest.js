@@ -1125,6 +1125,23 @@ tests['checkUpgradeDeep'] = function() {
   });
 };
 
+
+// For some reason the V8 proxy does not enumerate DOM properties correctly.
+PropertyEnumerationsrc = "(function() { for (var property in document.documentElement.style) {\n";
+PropertyEnumerationsrc += " if (property === 'zoom') window.testPropertyEnumeration = property;\n";
+PropertyEnumerationsrc += " }})();\n";
+
+tests['testPropertyEnumeration'] = function() {
+  var ourConsole = console;
+  var transcoded = transcode(PropertyEnumerationsrc, 'PropertyEnumeration.js');
+  console.log('transcoded: ' + transcoded);
+  var fakeMaker = new FakeMaker();
+  windowProxy = fakeMaker.makeFakeWindow();
+  eval.call(window, transcoded);
+
+  return isSame('zoom', windowProxy.testPropertyEnumeration);
+}
+
 tests['testDetectEval'] = function() {
   var ourConsole = console;
   // Transcode before creating the proxy
