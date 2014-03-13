@@ -20,6 +20,61 @@ function FakeObjectRef(index) {
   this._fake_object_ref = index;
 }
 
+function makeReflectAll(obj) {
+  var reflectAll = Object.create(null);
+  reflectAll.get = function(target, name, receiver) {
+    return Reflect.get(obj, name, receiver);
+  }
+  reflectAll.set = function(target, name, value, receiver) {
+    return Reflect.set(obj, name, value, receiver);
+  }
+  reflectAll.has = function(target, name) {
+    return Reflect.has(obj, name);
+  }
+  reflectAll.apply = function(target, receiver, args) {
+    return Reflect.apply(obj, receiver, args);
+  }
+  reflectAll.construct = function(target, args) {
+    return Reflect.construct(obj, args);
+  }
+  reflectAll.getOwnPropertyDescriptor = function(target, name) {
+    return Reflect.getOwnPropertyDescriptor(obj, name);
+  }
+  reflectAll.defineProperty = function(target, name, desc) {
+    // Write on the shadow object.
+    return Object.defineProperty(target, name, desc);
+  }
+  reflectAll.getPrototypeOf = function(target) {
+    return Reflect.getPrototypeOf(obj);
+  }
+  reflectAll.setPrototypeOf = function(target, newProto) {
+    return Reflect.setPrototypeOf(obj, newProto);
+  }
+  reflectAll.deleteProperty = function(target, name) {
+    return Reflect.deleteProperty(obj, name);
+  }
+  reflectAll.enumerate = function(target) {
+    return Reflect.enumerate(obj);
+  }
+  reflectAll.preventExtensions = function(target) {
+    return Reflect.preventExtensions(obj);
+  }
+  reflectAll.isExtensible = function(target) {
+    return Reflect.isExtensible(target);
+  }
+  reflectAll.ownsKeys = function(target) {
+    return ownKeys(obj);
+  }
+  return reflectAll;
+}
+
+function override(overrideMe, overrides) {
+  Object.getOwnPropertyNames(overrides).forEach(function(propertyName) {
+    overrideMe[propertyName] = overrides[propertyName];
+  });
+  return overrideMe;
+}
+
 var proxyDepth = 0;
 
 function FakeMaker() {
@@ -577,7 +632,7 @@ FakeMaker.prototype = {
     if (fakeMaker.isAProxy(obj))
       throw new Error('_createProxyObject on proxy object ' + path);
 
-    var proxy = Proxy(shadow, {
+    var overrides = {
 
       // target[name] or getter
       get: function(target, name, receiver) { // target is bound to the shadow object
@@ -773,9 +828,12 @@ FakeMaker.prototype = {
 
       // DOM object properties enumeration fails on Chrome, so we have to use the Reflect version.
       enumerate: function(target) {
+        console.log('enumerate ' + path);
         return Reflect.enumerate(obj);
       },
-    });
+    };
+
+    var proxy = Proxy(shadow,  override(makeReflectAll(obj), overrides));
 
     if (maker_debug)
       console.log('Accumulate originalProperties ' + path);

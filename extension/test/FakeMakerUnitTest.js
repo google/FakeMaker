@@ -1142,6 +1142,25 @@ tests['testPropertyEnumeration'] = function() {
   return isSame('zoom', windowProxy.testPropertyEnumeration);
 }
 
+
+// For some reason the V8 proxy does not enumerate DOM properties correctly.
+ForEachsrc = "(function() { var forEach = Array.prototype.forEach.call.bind(Array.prototype.forEach); \n";
+ForEachsrc += " var ary = document.querySelectorAll('button');\n";
+ForEachsrc += " function fn(entry) {window.testForEach = window.testForEach || 0; window.testForEach++;}\n";
+ForEachsrc += " forEach(ary, fn);\n";
+ForEachsrc += " })();\n";
+
+tests['testForEach'] = function() {
+  var ourConsole = console;
+  var transcoded = transcode(ForEachsrc, 'testForEach.js');
+  console.log('transcoded: ' + transcoded);
+  var fakeMaker = new FakeMaker();
+  windowProxy = fakeMaker.makeFakeWindow();
+  eval.call(window, transcoded);
+
+  return isSame(1, windowProxy.testForEach);
+}
+
 tests['testDetectEval'] = function() {
   var ourConsole = console;
   // Transcode before creating the proxy
