@@ -1,0 +1,85 @@
+<body>
+<button></button>
+</body>
+<script src="../third_party/harmony-reflect/reflect.js"></script>
+<script>
+function makeReflectAll(obj) {
+  var reflectAll = Object.create(null);
+  reflectAll.get = function(target, name, receiver) {
+    return Reflect.get(obj, name, receiver);
+  }
+  reflectAll.set = function(target, name, value, receiver) {
+    return Reflect.set(obj, name, value, receiver);
+  }
+  reflectAll.has = function(target, name) {
+    return Reflect.has(obj, name);
+  }
+  reflectAll.apply = function(target, receiver, args) {
+    return Reflect.apply(obj, receiver, args);
+  }
+  reflectAll.construct = function(target, args) {
+    return Reflect.construct(obj, args);
+  }
+  reflectAll.getOwnPropertyDescriptor = function(target, name) {
+    return Reflect.getOwnPropertyDescriptor(obj, name);
+  }
+  reflectAll.defineProperty = function(target, name, desc) {
+    return Reflect.defineProperty(obj, name, desc);
+  }
+  reflectAll.getPrototypeOf = function(target) {
+    return Reflect.getPrototypeOf(obj);
+  }
+  reflectAll.setPrototypeOf = function(target, newProto) {
+    return Reflect.setPrototypeOf(obj, newProto);
+  }
+  reflectAll.deleteProperty = function(target, name) {
+    return Reflect.deleteProperty(obj, name);
+  }
+  reflectAll.enumerate = function(target) {
+    return Reflect.enumerate(obj);
+  }
+  reflectAll.preventExtensions = function(target) {
+    return Reflect.preventExtensions(obj);
+  }
+  reflectAll.isExtensible = function(target) {
+    return Reflect.isExtensible(target);
+  }
+  reflectAll.ownsKeys = function(target) {
+    return ownKeys(obj);
+  }
+  return reflectAll;
+}
+
+(function() {
+  //var forEach = Array.prototype.forEach.call.bind(Array.prototype.forEach);
+  function forEach(anArray, fn) {
+    for (var i = 0; i < anArray.length; i++)
+      fn(anArray[i]);
+  }
+  //var ary = document.querySelectorAll('button');
+  var ary = [{num: 1},{num: 2}];
+  function fn(entry) {
+    window.testForEach = window.testForEach || 0;
+    window.testForEach += entry.num;
+  }
+  forEach(ary, fn);
+  console.log('Should be 3: ' + window.testForEach);
+
+  window.testForEach = 0;
+  function createProxy(obj) {
+    var shadow = {};
+    return new Proxy(shadow, makeReflectAll(obj));
+  }
+  var arrayOfProxies = [createProxy(ary[0]), createProxy(ary[1])];
+  forEach(arrayOfProxies, fn);
+  console.log('Should be 3: ' + window.testForEach); // NaN
+  window.testForEach = 0;
+  var proxyOfAry = createProxy(ary);
+  forEach(proxyOfAry, fn);
+  console.log('Should be 3: ' + window.testForEach); // 0
+  window.testForEach = 0;
+  var proxyOfAryOfProxies = createProxy(arrayOfProxies);
+  forEach(proxyOfAryOfProxies, fn);
+  console.log('Should be 3: ' + window.testForEach); // 0
+})();
+</script>

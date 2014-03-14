@@ -143,19 +143,21 @@ function FakeMaker() {
           }, path +'.prototype');
 
           // Rebuild the chain, wrapping the lifecyle callbacks.
-          var prototype = Object.create(firstDOMPrototype);
+          var prototype = firstDOMPrototype ? Object.create(firstDOMPrototype) : {};
           userPrototypes.reverse();
-          userPrototypes.forEach(function(proto) {
+          userPrototypes.forEach(function(proto, index) {
             prototype = Object.create(prototype);
             Object.getOwnPropertyNames(proto).forEach(function(name) {
+              if (name === '__proto__')
+                return;
               if (FakeCommon.lifeCycleOperations.indexOf(name) === -1) {
                 prototype[name] = fakeMaker.deproxyArg(proto[name]);
               } else {
                 prototype[name] = fakeMaker._proxyACallback(proto[name], theThis, path + '.' + name, 'sync');
               }
             });
-            if (calls_debug)
-              console.log('registerElement rewrote ' + Object.getOwnPropertyNames(prototype).join(', '));
+           if (calls_debug)
+              console.log('registerElement for path ' + path + ' rewrote ' + Object.getOwnPropertyNames(prototype).join(', '));
           });
 
           // Behind our back JS+DOM will make an expando property __proto__ of any newed

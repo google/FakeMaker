@@ -84,7 +84,7 @@ function decodeTraceToOffsets(calls, urls, sources) {
         var callOffset = -hex - 1;
         var enterOffset = stack[stack.length - 1];
         if (lineTables[currentSourceIndex])
-          trace.push(urlIndexWIthOffsets(currentSourceIndex, lineTables[currentSourceIndex], enterOffset, callOffset) + ' > ' + index);
+          trace.push(urlIndexWIthOffsets(currentSourceIndex, lineTables[currentSourceIndex], enterOffset, callOffset) + ' > '); // + index);
       }
     } else if (entry > 0) {  // enter
       stack.push(entry);
