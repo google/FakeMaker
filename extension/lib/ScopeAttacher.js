@@ -10,6 +10,8 @@ import {IdentifierExpression} from  '../third_party/traceur-compiler/src/syntax/
 import {IdentifierToken} from '../third_party/traceur-compiler/src/syntax/IdentifierToken';
 import {dumpeur} from './dumpeur';
 
+var debug_scope_attacher = false;
+
 class  Scope {
   constructor(parent, tree) {
     this.parent = parent;
@@ -27,7 +29,7 @@ class  Scope {
   }
 
   declare(name, location) {
-    if (name in this.declarations)
+    if (debug_scope_attacher && name in this.declarations)
       console.warn('Multiple declarations of ' + name + ' at ' + dumpeur(location));
     this.declarations[name] = location;
   }

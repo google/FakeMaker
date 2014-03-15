@@ -155,9 +155,6 @@ export class AttachWindowProxyToGlobalsTransformer extends ParseTreeTransformer 
           createIdentifierToken('windowProxy')
       );
     }
-    if (name === 'undefined')
-      console.log('undefined identfier ', dumpeur(tree));
-
     tree.scope = this.scope_.scopeOf(name);
 
     // The identifier may be global but it may be also be

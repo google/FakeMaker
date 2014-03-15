@@ -151,7 +151,11 @@ function FakeMaker() {
               if (name === '__proto__')
                 return;
               if (FakeCommon.lifeCycleOperations.indexOf(name) === -1) {
-                prototype[name] = fakeMaker.deproxyArg(proto[name]);
+                var descriptor = Object.getOwnPropertyDescriptor(proto, name);
+                if (descriptor.value) {
+                  descriptor.value = fakeMaker.deproxyArg(descriptor.value);
+                }
+                Object.defineProperty(prototype, name, descriptor);
               } else {
                 prototype[name] = fakeMaker._proxyACallback(proto[name], theThis, path + '.' + name, 'sync');
               }
