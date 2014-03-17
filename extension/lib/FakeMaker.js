@@ -119,7 +119,7 @@ function FakeMaker() {
     },
     setTimeout: function(args, theThis, path) {
       // setTimeout(callback, delay)
-      return [this._proxyACallback(args[0]), this.deproxyArg(args[1])];
+      return [this._proxyACallback(args[0], theThis, path, false), this.deproxyArg(args[1])];
     },
     registerElement: function(args, theThis, path) {
       var fakeMaker = this;
@@ -442,7 +442,7 @@ FakeMaker.prototype = {
     if (calls_debug)
      console.log('_proxyACallback ' + path);
    if (!path)
-    throw new Error('no path')
+    throw new Error('_proxyACallback no path')
 
     var fakeMaker = this;
     fakeMaker._callbacks.push(callback);  // Assign a number to each callback.
