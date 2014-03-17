@@ -621,13 +621,89 @@ FakeMaker.prototype = {
     }
   },
 
+  _wrapPropertyDescriptor: function(target, name, descriptor, obj, path) {
+      // Create a new proxy and ref it.
+      descriptor.value = this._wrapReturnValue(descriptor.value, obj, path + '.' + name);
+      // Store the descriptor on the shadow object; only the value is different, it's wrapped.
+      Object.defineProperty(target, name, descriptor);
+      return descriptor;
+  },
+
+  _getFromPropertyDescriptor: function(target, name, receiver, descriptor, ownsName, path) {
+    var result;
+    if (!descriptor) {
+      result = this._wrapReturnValue(undefined, undefined, path + '.' + name);
+      if (get_set_debug)
+        console.log('_getFromPropertyDescriptor ' + name + ': undefined ' + path);
+    } else if (descriptor.get) {
+      this.stopRecording(path);
+      var value = Reflect.get(ownsName, name, receiver);
+      this.startRecording(path);
+      result = this._wrapReturnValue(value, ownsName, path + '.' + name);
+      if (get_set_debug)
+        console.log('get from getter ' + name+ ' {' + typeof result + '}' + path);
+    } else if (this.isAProxy(descriptor.value)) {
+      // Only objects and fucntions have proxies, so property is one of those.
+      // The object graph will handle playback, just ref it.
+      var indexOfObj = this._proxiesOfObjects.indexOf(descriptor.value);
+      var proxiedObj = this._proxiedObjects[indexOfObj];
+      if (typeof proxiedObj === 'object')
+        this._getOrCreateObjectRef(proxiedObj, path);
+      else if (typeof proxiedObj === 'function')
+        this._getOrCreateFunctionObjectRef(proxiedObj, path);
+      else
+        throw new Error('Proxy get for proxy is not an object or function');
+      // Return the pre-existing proxy.
+      result = descriptor.value;
+      if (get_set_debug)
+        console.log('_getFromPropertyDescriptor returns existing proxy for : ' + name + ' {' + typeof proxiedObj + '} at ' + path);
+    } else {
+      // Wrap the value and return it.
+      result = this._wrapPropertyDescriptor(target, name, descriptor, ownsName, path).value;
+      if (get_set_debug)
+        console.log('_getFromPropertyDescriptor from defineProperty: ' + name + ' {' + typeof descriptor.value + '} at ' + path);
+    }
+    return result;
+  },
+
+  _preSet: function(obj, name, value) {
+    // In set/defineProperty we don't want to wrap the value, just
+    // record that it was set in case JS code later reads it.
+    var indexOfProxy = this._proxiedObjects.indexOf(obj);
+    if (indexOfProxy === -1)
+      throw new Error('set: No proxy for object at ' + path);
+
+    if (this._originalProperties[indexOfProxy].indexOf(name) === -1) {
+      // Not on the object when we created the proxy.
+      var isExpando = this.getExpandoProperty(obj, name);
+      if (isExpando) {
+        if (expando_debug)
+          console.log('set found expando, set ' + name + ' to ' + typeof(value));
+        if (obj === window) {
+          this._setExpandoGlobals.push(name);
+          if (expando_debug)
+            console.log('set found window expando ' + name, typeof(value));
+        }
+      } else {
+        this.registerExpando(obj, name);
+      }
+    } else {
+    if (expando_debug)
+      console.log('Not an expando ' + name + ' obj[name] set');
+      // Mark access so the property appears on our fake in the player.
+      this._markAccess(indexOfProxy, name);
+    }
+  },
+
   _createProxyObject: function(obj, theThis, path) {
     if (proxyDepth++ > 10)
       throw new Error("we are in too deep....");
     if (obj === null)
       throw new Error('Do not proxy null');
+
     var fakeMaker = this;
-    var shadow;
+
+    var shadow;  // Workaround for https://github.com/tvcutsem/harmony-reflect/issues/25
     if (typeof obj === 'object')
       shadow = {};
     else if (typeof obj === 'function')
@@ -638,7 +714,7 @@ FakeMaker.prototype = {
     if (fakeMaker.isAProxy(obj))
       throw new Error('_createProxyObject on proxy object ' + path);
 
-    var overrides = {
+    var overrides = {  // close over 'obj' and 'path'
 
       // target[name] or getter
       get: function(target, name, receiver) { // target is bound to the shadow object
@@ -674,43 +750,8 @@ FakeMaker.prototype = {
 
         if (get_set_debug) console.log('get descriptor ' + name, descriptor);
 
-        if (!descriptor) {
-          result = fakeMaker._wrapReturnValue(undefined, undefined, path + '.' + name);
-          if (get_set_debug)
-            console.log('get ' + name + ': undefined ' + path);
-          return result;
-        }
+        var result = fakeMaker._getFromPropertyDescriptor(target, name, receiver, descriptor, ownsName, path);
 
-        if (descriptor.get) {
-          fakeMaker.stopRecording(path);
-          var value = Reflect.get(ownsName, name, receiver);
-          fakeMaker.startRecording(path);
-          result = fakeMaker._wrapReturnValue(value, obj, path + '.' + name);
-          if (get_set_debug)
-            console.log('get from getter ' + name+ ' {' + typeof result + '}' + path);
-        } else {
-          if (!fakeMaker.isAProxy(descriptor.value)) {
-            descriptor.value = fakeMaker._wrapReturnValue(descriptor.value, obj, path + '.' + name);
-            Object.defineProperty(target, name, descriptor);
-             if (get_set_debug)
-              console.log('get from defineProperty: ' + name + ' {' + typeof descriptor.value + '} at ' + path);
-          }  else {
-            // else we know the property is an object or function
-            // (because it has a proxy) so the object graph will handle this, ref it.
-            var indexOfObj = fakeMaker._proxiesOfObjects.indexOf(descriptor.value);
-            var getTargetObj = fakeMaker._proxiedObjects[indexOfObj];
-            if (typeof getTargetObj === 'object')
-              fakeMaker._getOrCreateObjectRef(getTargetObj, path);
-            else if (typeof getTargetObj === 'function')
-              fakeMaker._getOrCreateFunctionObjectRef(getTargetObj, path);
-            else
-              throw new Error('Proxy get for proxy is not an object or function');
-
-            if (get_set_debug)
-              console.log('get returns existing proxy for : ' + name + ' {' + typeof getTargetObj + '} at ' + path);
-          }
-          result = descriptor.value;
-        }
         // '.apply()' will need to process some functions for callbacks before they go into the DOM. But it does not
         // know the name of the function it will call. So we check the name here and mark the shadow/target for apply
         if(name in fakeMaker._DOMFunctionsThatCallback) {
@@ -724,46 +765,31 @@ FakeMaker.prototype = {
         return result;
       },
 
+      getOwnPropertyDescriptor: function(target, name) {
+        // Read the descriptor from the real object.
+        var descriptor = Object.getOwnPropertyDescriptor(obj, name);
+        // Wrap the value and store it on the shadow.
+        return fakeMaker._wrapPropertyDescriptor(target, name, descriptor, obj, path);
+      },
+
       set: function(target, name, value, receiver) {
-        // target is now bound to the shadowWindow
-        var returnValue;
-        var indexOfProxy = fakeMaker._proxiedObjects.indexOf(obj);
-        if (fakeMaker._originalProperties[indexOfProxy].indexOf(name) === -1) {
-          // Not on the object when we created the proxy.
-          var isExpando = fakeMaker.getExpandoProperty(obj, name);
-          if (isExpando) {
-            if (expando_debug)
-              console.log('set found expando, set ' + name + ' to ' + typeof(value));
-            obj[name] = value;
-            if (obj === window) {
-              fakeMaker._setExpandoGlobals.push(name);
-              if (expando_debug)
-                console.log('set found window expando ' + name, typeof(value));
-            }
-          } else {
-            fakeMaker.registerExpando(obj, name);
-          }
-          return obj[name];
-        }
-
-        if (expando_debug)
-          console.log('Not an expando ' + name + ' obj[name] set');
-
-        if (get_set_debug) {
-          var descriptor = fakeMaker._getPropertyDescriptor(obj, name, path + '.' + name + '=');
-          console.log('set before ' + name + ' ' + (typeof value) + ' descriptor:', descriptor);
-        }
-
+        fakeMaker._preSet(obj, name, value);
         obj[name] = value;
-
-        // Mark access so the property appears on our fake in the player.
-        fakeMaker._markAccess(indexOfProxy, name);
-
-        if (get_set_debug) {
-          var descriptor = fakeMaker._getPropertyDescriptor(obj, name, path + '.' + name + '=');
-          console.log('set after ' + name + ' ' + (typeof value) + ' descriptor:', descriptor);
-        }
         return true;
+      },
+
+      defineProperty: function(target, name, desc) {
+        console.log('defineProperty ' + path + '.' + name);
+        try {
+          fakeMaker._preSet(obj, name, desc.value);
+          // Write a descriptor on the target to avoid nanny error from reflect:
+          // "cannot successfully define a non-configurable descriptor for configurable or non-existent property"
+          Object.defineProperty(target, name, desc);
+          var result = Object.defineProperty(obj, name, desc);
+        } catch (ex) {
+          console.error(ex.stack || ex);
+        }
+        return result;
       },
 
       // target.apply(thisArg, args)

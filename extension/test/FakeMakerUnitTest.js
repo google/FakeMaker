@@ -122,8 +122,27 @@ tests['testSetGet'] = function() {
   console.assert(objWithNothingProxy['baz'].bal === something.bal);
 
   json.testSetGet = fakeMaker.toJSON();
-  console.log('objWithNothing:', JSON.parse(json.testSetGet));
+  console.log('testSetGet:', JSON.parse(json.testSetGet));
   var fakePlayer = new FakePlayer(json.testSetGet);
+  var obj = fakePlayer.startingObject();
+  // get on an object defined by set is not traced:
+  // the value is not part of the DOM.
+  return isSame(undefined, obj['baz']) && json;
+};
+
+tests['testDefineProperty'] = function() {
+  var fakeMaker = new FakeMaker();
+  var objWithNothing = {
+  };
+  var objWithNothingProxy = fakeMaker.makeFake(objWithNothing, objWithNothing);
+  var something = {bal: true};
+  var descriptor = {value: something};
+  Object.defineProperty(objWithNothingProxy, 'baz', descriptor);
+  console.assert(objWithNothingProxy['baz'].bal === something.bal);
+
+  json.testDefineProperty = fakeMaker.toJSON();
+  console.log('testDefineProperty:', JSON.parse(json.testDefineProperty));
+  var fakePlayer = new FakePlayer(json.testDefineProperty);
   var obj = fakePlayer.startingObject();
   // get on an object defined by set is not traced:
   // the value is not part of the DOM.
@@ -1159,6 +1178,24 @@ tests['testForEach'] = function() {
   eval.call(window, transcoded);
 
   return isSame(1, windowProxy.testForEach);
+}
+
+var DefinePropertySrc = "var descriptor = {value: true, enumerable: true };\n";
+DefinePropertySrc +=   "Object.defineProperty(window.navigator, 'pointerEnabled', descriptor);\n";
+
+tests['testDefinePropertyPointerEnabled'] = function() {
+  var ourConsole = console;
+  var transcoded = transcode(DefinePropertySrc, 'testDefinePropertyPointerEnabled.js');
+  console.log('transcoded: ' + transcoded);
+  var fakeMaker = new FakeMaker();
+  windowProxy = fakeMaker.makeFakeWindow();
+  eval(transcoded);
+
+  json.testDefinePropertyPointerEnabled = fakeMaker.toJSON();
+
+  ourConsole.log('testDefinePropertyPointerEnabled', JSON.parse(json.testDefinePropertyPointerEnabled));
+  saveJsonData('testDefinePropertyPointerEnabled', json);
+  return true;
 }
 
 tests['testDetectEval'] = function() {

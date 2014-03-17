@@ -27,6 +27,6 @@ window.transcode = function transcode(src, url, fncName) {
     var srcURL = '\n//# sourceURL=' + outURL + '\n';
     var result = TreeWriter.write(resultTree, {}) + srcURL;
     var resultFile = new SourceFile(outURL, result);
-    console.log('transcoded ' + url + ' to ' + outURL);
+    //console.log('transcoded ' + url + ' to ' + outURL);
     return result;
 }
