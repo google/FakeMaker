@@ -1,4 +1,4 @@
-// Copyright 2013 Traceur Authors.
+// Copyright 2014 Traceur Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,19 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-'use strict';
+import {YieldFinder} from './YieldFinder'
 
-var fs = require('fs');
-var path = require('path');
+function scopeContainsYield(tree) {
+  var visitor = new YieldFinder(tree);
+  return visitor.hasYield || visitor.hasYieldFor || visitor.hasAwait;
+}
 
-var traceur = require('../src/node/traceur.js');
-var testUtil = require('./test-utils.js');
-var parseProlog = testUtil.parseProlog;
-var featureSuite = testUtil.featureSuite;
-var testList = require('./test-list.js').testList;
-var nodeLoader = require('../src/node/nodeLoader.js');
-var System = require('../src/node/System.js');
-
-process.chdir('test');
-
-featureSuite(testList, nodeLoader);
+export default scopeContainsYield;

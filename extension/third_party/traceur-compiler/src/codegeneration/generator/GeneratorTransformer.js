@@ -21,6 +21,7 @@ import {
   BinaryOperator,
   ExpressionStatement
 } from '../../syntax/trees/ParseTrees'
+import {ExplodeExpressionTransformer} from '../ExplodeExpressionTransformer';
 import {FallThroughState} from './FallThroughState';
 import {ReturnState} from './ReturnState';
 import {State} from './State';
@@ -41,7 +42,7 @@ import {
   parseStatement,
   parseStatements
 } from '../PlaceholderParser';
-import {ExplodeExpressionTransformer} from '../ExplodeExpressionTransformer';
+import scopeContainsYield from './scopeContainsYield';
 
 /**
  * Desugars generator function bodies. Generator function bodies contain
@@ -58,8 +59,15 @@ export class GeneratorTransformer extends CPSTransformer {
 
   constructor(identifierGenerator, reporter) {
     super(identifierGenerator, reporter);
-    this.inYieldFor_ = false;
+    this.shouldAppendThrowCloseState_ = true;
   }
+
+  expressionNeedsStateMachine(tree) {
+    if (tree === null)
+      return false;
+    return scopeContainsYield(tree);
+  }
+
 
   /**
    * Simple form yield expressions (direct children of an ExpressionStatement)
@@ -69,32 +77,40 @@ export class GeneratorTransformer extends CPSTransformer {
    * @private
    */
   transformYieldExpression_(tree) {
-    var expression = this.transformAny(tree.expression);
-    if (!expression)
-      expression = createUndefinedExpression();
+    var expression, machine;
+    if (this.expressionNeedsStateMachine(tree.expression)) {
+      ({expression, machine} = this.expressionToStateMachine(tree.expression));
+    } else {
+      expression = this.transformAny(tree.expression);
+      if (!expression)
+        expression = createUndefinedExpression();
+    }
 
     if (tree.isYieldFor)
-      return this.transformYieldForExpression_(expression);
+      return this.transformYieldForExpression_(expression, machine);
 
     var startState = this.allocateState();
     var fallThroughState = this.allocateState();
-    var machine = this.stateToStateMachine_(
+    var yieldMachine = this.stateToStateMachine_(
         new YieldState(
             startState,
             fallThroughState,
             this.transformAny(expression)),
         fallThroughState);
 
+    if (machine)
+      yieldMachine = machine.append(yieldMachine);
+
     // The yield expression we generated for the yield-for expression should not
     // be followed by the ThrowCloseState since the inner iterator need to
     // handle the throw case.
-    if (this.inYieldFor_)
-      return machine;
+    if (this.shouldAppendThrowCloseState_)
+      yieldMachine = yieldMachine.append(this.createThrowCloseState_());
 
-    return machine.append(this.createThrowCloseState_());
+    return yieldMachine;
   }
 
-  transformYieldForExpression_(expression) {
+  transformYieldForExpression_(expression, machine = undefined) {
     var gName = this.getTempIdentifier();
     this.addMachineVariable(gName);
     var g = id(gName);
@@ -133,7 +149,7 @@ export class GeneratorTransformer extends CPSTransformer {
         $ctx.action = 'next';
 
         for (;;) {
-          ${next} = ${g}[$ctx.action]($ctx.sent);
+          ${next} = ${g}[$ctx.action]($ctx.sentIgnoreThrow);
           if (${next}.done) {
             $ctx.sent = ${next}.value;
             break;
@@ -143,16 +159,20 @@ export class GeneratorTransformer extends CPSTransformer {
 
     // The yield above should not be treated the same way as a normal yield.
     // See comment in transformYieldExpression_.
-    var wasInYieldFor = this.inYieldFor_;
-    this.inYieldFor_ = true;
+    var shouldAppendThrowCloseState = this.shouldAppendThrowCloseState_;
+    this.shouldAppendThrowCloseState_ = false;
     statements = this.transformList(statements);
-    this.inYieldFor_ = wasInYieldFor;
-    var machine = this.transformStatementList_(statements);
+    var yieldMachine = this.transformStatementList_(statements);
+    this.shouldAppendThrowCloseState_ = shouldAppendThrowCloseState;
+
+    if (machine)
+      yieldMachine = machine.append(yieldMachine);
 
     // TODO(arv): Another option is to build up the statemachine for this here
-    // instead of builing the code and transforming the code into
+    // instead of builing the code and transforming the code into a state
+    // machine.
 
-    return machine;
+    return yieldMachine;
   }
 
   /**
@@ -169,25 +189,27 @@ export class GeneratorTransformer extends CPSTransformer {
    * @param {BinaryOperator} tree
    */
   transformYieldAssign_(tree) {
+    var shouldAppendThrowCloseState = this.shouldAppendThrowCloseState_;
+    this.shouldAppendThrowCloseState_ = false;
     var machine = this.transformYieldExpression_(tree.right);
     var left = this.transformAny(tree.left);
+    var sentExpression = tree.right.isYieldFor ?
+        parseExpression `$ctx.sentIgnoreThrow` :
+        parseExpression `$ctx.sent`;
     var statement = new ExpressionStatement(
         tree.location,
         new BinaryOperator(
             tree.location,
             left,
             tree.operator,
-            parseExpression `$ctx.sent`));
+            sentExpression));
     var assignMachine = this.statementToStateMachine_(statement);
+    this.shouldAppendThrowCloseState_ = shouldAppendThrowCloseState;
     return machine.append(assignMachine);
   }
 
   createThrowCloseState_() {
-    return this.statementToStateMachine_(parseStatement `
-        if ($ctx.action === 'throw') {
-          $ctx.action = 'next';
-          throw $ctx.sent;
-        }`);
+    return this.statementToStateMachine_(parseStatement `$ctx.maybeThrow()`);
   }
 
   /**
@@ -202,6 +224,10 @@ export class GeneratorTransformer extends CPSTransformer {
     if (isYieldAssign(expression))
       return this.transformYieldAssign_(expression);
 
+    if (this.expressionNeedsStateMachine(expression)) {
+       return this.expressionToStateMachine(expression).machine;
+    }
+
     return super.transformExpressionStatement(tree);
   }
 
@@ -210,24 +236,10 @@ export class GeneratorTransformer extends CPSTransformer {
    * @return {ParseTree}
    */
   transformAwaitStatement(tree) {
+    // TODO(arv): This should be handled in the parser... change to throw.
     this.reporter.reportError(tree.location.start,
         'Generator function may not have an await statement.');
     return tree;
-  }
-
-  /**
-   * @param {Finally} tree
-   * @return {ParseTree}
-   */
-  transformFinally(tree) {
-    var result = super.transformFinally(tree);
-    if (result.block.type != STATE_MACHINE) {
-      return result;
-    }
-    // TODO: Is 'return' allowed inside 'finally'?
-    this.reporter.reportError(tree.location.start,
-        'yield or return not permitted from within a finally block.');
-    return result;
   }
 
   /**
@@ -235,14 +247,25 @@ export class GeneratorTransformer extends CPSTransformer {
    * @return {ParseTree}
    */
   transformReturnStatement(tree) {
+    var expression, machine;
+
+    if (this.expressionNeedsStateMachine(tree.expression))
+      ({expression, machine} = this.expressionToStateMachine(tree.expression));
+    else
+      expression = tree.expression;
+
     var startState = this.allocateState();
     var fallThroughState = this.allocateState();
-    return this.stateToStateMachine_(
+    var returnMachine = this.stateToStateMachine_(
         new ReturnState(
             startState,
             fallThroughState,
-            this.transformAny(tree.expression)),
+            this.transformAny(expression)),
         fallThroughState);
+
+    if (machine)
+      return machine.append(returnMachine);
+    return returnMachine
   }
 
   /**
@@ -270,21 +293,8 @@ export class GeneratorTransformer extends CPSTransformer {
    * @param {number} machineEndState
    * @return {Array.<ParseTree>}
    */
-  machineRethrowStatements(machineEndState) {
-    return parseStatements `throw $ctx.storedException`;
-  }
-
-  /**
-   * @param {number} machineEndState
-   * @return {Array.<ParseTree>}
-   */
   machineFallThroughStatements(machineEndState) {
     return createStatementList(createAssignStateStatement(machineEndState));
-  }
-
-  /** @return {Array.<ParseTree>} */
-  machineEndStatements() {
-    return parseStatements `return $ctx`;
   }
 
   /**
