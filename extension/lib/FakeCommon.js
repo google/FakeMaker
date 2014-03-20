@@ -9,7 +9,6 @@ var FakeCommon = {
   // The list of chrome built-ins created by using this script in node.js:
   //    console.log(Object.getOwnPropertyNames(global));
   // and finding the common values with a similar script running in a Worker.
-
   chromeBuiltins: ['Error', 'Date', 'parseInt', 'Math', 'Int8Array', 'Int16Array', 'Array', 'encodeURI',
   'EvalError', 'Object', 'Int32Array', 'SyntaxError', 'decodeURI', 'DataView', 'unescape',
   'decodeURIComponent', 'Infinity', 'isNaN', 'escape', 'isFinite', 'ArrayBuffer', 'Uint32Array',

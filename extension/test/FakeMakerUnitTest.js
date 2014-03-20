@@ -99,7 +99,7 @@ tests['testGetterSetter'] = function() {
     set baz(value) { this._baz = value;},
     _baz: 9,
   };
-  var objWithGetterProxy = fakeMaker.makeFake(objWithGetter, objWithGetter);
+  var objWithGetterProxy = fakeMaker.makeFake(objWithGetter, 'testGetterSetter');
   objWithGetter.baz = 10;
   objWithGetterProxy.baz = 10;
   console.assert(objWithGetterProxy.baz === objWithGetter.baz);
@@ -116,7 +116,7 @@ tests['testSetGet'] = function() {
   var fakeMaker = new FakeMaker();
   var objWithNothing = {
   };
-  var objWithNothingProxy = fakeMaker.makeFake(objWithNothing, objWithNothing);
+  var objWithNothingProxy = fakeMaker.makeFake(objWithNothing, 'objWithNothing');
   var something = {bal: true};
   objWithNothingProxy['baz'] = something;
   console.assert(objWithNothingProxy['baz'].bal === something.bal);
@@ -134,7 +134,7 @@ tests['testDefineProperty'] = function() {
   var fakeMaker = new FakeMaker();
   var objWithNothing = {
   };
-  var objWithNothingProxy = fakeMaker.makeFake(objWithNothing, objWithNothing);
+  var objWithNothingProxy = fakeMaker.makeFake(objWithNothing, 'objWithNothing');
   var something = {bal: true};
   var descriptor = {value: something};
   Object.defineProperty(objWithNothingProxy, 'baz', descriptor);
@@ -183,11 +183,16 @@ tests['testProto'] = function() {
   var objWithPrototype = new Foo();
   var objWithPrototypeProxy = fakeMaker.makeFake(objWithPrototype, 'objWithPrototype');
   console.assert(objWithPrototypeProxy.baz() === objWithPrototype.baz());
+  var theProto = objWithPrototypeProxy.__proto__;
+  console.assert(theProto.baz);
 
   json.testProto = fakeMaker.toJSON();
   console.log('objWithPrototype:', JSON.parse(json.testProto));
   var fakePlayer = new FakePlayer(json.testProto);
-  return isSame(objWithPrototype.baz(), fakePlayer.startingObject().baz()) && json;
+  var start = fakePlayer.startingObject();
+  var step1 = start.baz();
+  var step2 = start.__proto__.baz;
+  return isSame(typeof step2, 'function') && json;
 };
 
 tests['testDOMObjectProperty'] = function() {
@@ -1022,6 +1027,49 @@ tests['checkBuiltInFunctionProperty'] = function() {
     fakePlayer.initialize();
     eval(transcoded);
     if (isSame(true, windowProxy.testBuiltInFunctionProperty))
+          pass();
+  });
+};
+
+
+var ProtoPropertiesSrc = "var AnotherPrototype = Object.create(HTMLElement.prototype);\n";
+ProtoPropertiesSrc += "window.preTestProtoProperties = AnotherPrototype.__proto__;"
+ProtoPropertiesSrc +=   "AnotherPrototype.createdCallback = function() {\n";
+ProtoPropertiesSrc +=   "    var myProto = this.__proto__;\n";
+ProtoPropertiesSrc +=   "    var myProtoProto = myProto.__proto__;\n";
+ProtoPropertiesSrc +=   "    window.testProtoProperties = Object.getOwnPropertyNames(this.__proto__.__proto__);\n";
+ProtoPropertiesSrc +=   "}\n";
+ProtoPropertiesSrc +=   "document.registerElement('polymer-another-element', {\n";
+ProtoPropertiesSrc +=   "  prototype: AnotherPrototype\n";
+ProtoPropertiesSrc +=   "});\n";
+ProtoPropertiesSrc +=  "var pae = document.querySelector('polymer-another-element');\n"
+ProtoPropertiesSrc +=  "console.log('Properties of proto proto: ' +Object.getOwnPropertyNames(pae.__proto__.__proto__).join(', '));\n"
+
+tests['testProtoProperties'] = function() {
+  var ourConsole = console;
+  var transcoded = transcode(ProtoPropertiesSrc, 'testProtoProperties.js');
+  console.log('transcoded: ' + transcoded);
+  var fakeMaker = new FakeMaker();
+  windowProxy = fakeMaker.makeFakeWindow();
+  eval(transcoded);
+
+  json.testProtoProperties = fakeMaker.toJSON();
+
+  ourConsole.log('testProtoProperties', JSON.parse(json.testProtoProperties));
+  saveJsonData('testProtoProperties', json);
+  return true;
+}
+
+tests['checkProtoProperties'] = function() {
+  var transcoded = transcode(ProtoPropertiesSrc, 'checkProtoProperties.js');
+  console.log('transcoded: ' + transcoded);
+  restoreJsonData('testProtoProperties', function(json) {
+    console.log('checkProtoProperties playback data: ', json)
+    var fakePlayer = new FakePlayer(json);
+    window.windowProxy = fakePlayer.startingObject();
+    fakePlayer.initialize();
+    var result = eval(transcoded);
+    if (isSame('code-mirror', windowProxy.testProtoProperties))
           pass();
   });
 };

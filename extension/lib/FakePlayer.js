@@ -271,6 +271,10 @@ FakePlayer.prototype = {
         shell[name] = eval(propertyRep._do_not_proxy_function_);
         return;
       }
+      if (name === '_fake_proto_') {
+        Object.setPrototypeOf(shell, fakePlayer._rebuiltObjects[propertyRep._fake_object_ref]);
+        return;
+      }
       if (propertyRep._fake_function_) {
         // Set the pointer.
         shell[name] = fakePlayer._rebuiltObjects[propertyRep._fake_object_ref];
