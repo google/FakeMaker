@@ -98,6 +98,10 @@ document.querySelector('.all').addEventListener('click', function() {
   runAll = true;
   runNextTest();
 });
+document.querySelector('.reset').addEventListener('click', function() {
+  var base = window.location.href.split('?')[0];
+  window.location = base;
+});
 
 window.addEventListener('load', function() {
   var search = window.location.href.split('?')[1];
