@@ -20,9 +20,12 @@ window.transcode = function transcode(src, url, fncName) {
     var global = window; // This is the preprocessor's window.
     var reporter = new ErrorReporter();
     var globalScope = ScopeAttacher.attachScopes(reporter, tree, global);
-    var transformer = new AttachWindowProxyToGlobalsTransformer();
-    var tracer = new TraceFunctionsTransformer(url);
-    var resultTree = tracer.transformAny(transformer.transformAny(tree));
+    var prefixGlobalsWithWindowProxy = new AttachWindowProxyToGlobalsTransformer();
+    var resultTree = prefixGlobalsWithWindowProxy.transformAny(tree);
+    if (true || window.__F_tracing) {
+        var tracer = new TraceFunctionsTransformer(url);
+        resultTree = tracer.transformAny(resultTree);
+    }
     var outURL = fileRenamer(url);
     var srcURL = '\n//# sourceURL=' + outURL + '\n';
     var result = TreeWriter.write(resultTree, {}) + srcURL;

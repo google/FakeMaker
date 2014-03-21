@@ -740,7 +740,8 @@ tests['checkedPlayer'] = function() {
     var fakePlayer = new FakePlayer(json);
     window.windowProxy = fakePlayer.startingObject();
     fakePlayer.initialize();
-    if (isSame(windowProxy.checkedResult, eval(transcoded)))
+    eval(transcoded);
+    if (isSame(windowProxy.checkedResult, true))
       pass();
   });
 }
