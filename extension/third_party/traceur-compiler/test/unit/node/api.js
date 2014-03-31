@@ -12,11 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {YieldFinder} from './YieldFinder'
+suite('api.js', function() {
 
-function scopeContainsYield(tree) {
-  var visitor = new YieldFinder(tree);
-  return visitor.hasYield || visitor.hasYieldFor || visitor.hasAwait;
-}
+  setup(function() {
+    traceur.options.reset();
+  });
 
-export default scopeContainsYield;
+  teardown(function() {
+    traceur.options.reset();
+  });
+
+  test('api compile script function declaration', function() {
+    var api = require('../../../src/node/api');
+    api.compile('function foo() {};',
+        {modules: false, blockBinding: true});
+  });
+
+  test('api compile script function expression', function() {
+    var api = require('../../../src/node/api');
+    api.compile('var foo = function() {};',
+        {modules: false, blockBinding: true});
+  });
+
+});

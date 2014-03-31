@@ -187,22 +187,40 @@ FakePlayer.prototype = {
     }
   },
 
+  _someProtos: function(obj, callback, path) {
+    var protoPath = '';
+    var mark = obj;
+    while (mark) {
+      var result = callback(mark);
+      if (result)
+        return result;
+      mark = Object.getPrototypeOf(mark);
+    }
+  },
+
   checkForCallback: function(name, args) {
     if (name === 'registerElement') {
       if (debug_player)
         console.log('checkForCallback found ' + name);
-      var options = args[1];
+      var options = args[1];  // a ref to an object created by JS
       if (options && options.prototype) {
         FakeCommon.lifeCycleOperations.forEach(function(key) {
           if (options.prototype[key]) {
+            var fakePlayer = this;
             function lifeCycleWrapper() {
-              // The 'this' incoming has getters for DOM operations
-              var extendedThis = Object.create(this)
-              Object.getOwnPropertyNames(options.prototype).forEach(function(name) {
-                extendedThis[name] = options.prototype[name];
-              });
-
-              options.prototype[key].apply(extendedThis, arguments);
+              // The 'this' incoming has getters for DOM operations that were set by
+              // proxy 'get', but other functions on the proto chain are JS expandos.
+              // We need to copy them on to our chain.
+              var fromProto = options.prototype;
+              fakePlayer._someProtos(this.__proto__, function(proto) {
+                Object.getOwnPropertyNames(fromProto).forEach(function(name) {
+                  var descriptor = Object.getOwnPropertyDescriptor(fromProto, name);
+                  Object.defineProperty(proto, name, descriptor);
+                });
+                fromProto = fromProto.__proto__;
+                return !fromProto;
+              }, 'registerElement.' + key);
+              options.prototype[key].apply(this, arguments);
             }
             this.callbacks.push(lifeCycleWrapper);
             if (debug_player)
@@ -288,7 +306,8 @@ FakePlayer.prototype = {
           get: function() {
             fakePlayer.checkForCallback(name, arguments);
             return fakePlayer.replay(name)
-          }
+          },
+          configurable: true
         });
       }
     });

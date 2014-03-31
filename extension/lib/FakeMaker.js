@@ -316,8 +316,13 @@ FakeMaker.prototype = {
     }
     index = this._proxiesOfObjects.indexOf(obj);
     if (index !== -1) {  // The object is a proxy.
-      console.log('_lookupProxyObject called with a proxy, index ' + index + ' at ' + path);
-      throw new Error('_lookupProxyObject object looked up is already a proxy ' + path)
+      // Normally this is a sign that we set a proxy into the DOM by mistake.
+      // However in one case it's the easiest fix:
+      // options.prototype = Object.create(HTMLElement.prototype);
+      // The get HTMLElement.prototype returns a proxy which becomes the .__proto__
+      // for CustomElements. We would want to return a proxy in that case anyway.
+      if (recording_debug)
+        console.log('_lookupProxyObject called with a proxy, index ' + index + ' at ' + path);
       return obj;
     }
 
@@ -419,9 +424,8 @@ FakeMaker.prototype = {
   },
 
   // helper for proxy apply and construct
-  _wrapCallResult: function(obj, path, callback) {
-      var returnValue = callback();
-      var result = this._wrapReturnValue(returnValue, obj, path);
+  _wrapCallResult: function(returnValue, theThis, path) {
+      var result = this._wrapReturnValue(returnValue, theThis, path);
       if (this.isAProxy(result)) { // Then we did not record the return value, record its ref.
           this._record(this._getOrCreateObjectRef(returnValue, path), path);
       }
@@ -614,7 +618,18 @@ FakeMaker.prototype = {
       // Create a new proxy and ref it.
       descriptor.value = this._wrapReturnValue(descriptor.value, obj, path + '.' + name);
       // Store the descriptor on the shadow object; only the value is different, it's wrapped.
-      Object.defineProperty(target, name, descriptor);
+      var targetDescriptor = Object.getOwnPropertyDescriptor(target, name);
+
+      if (!targetDescriptor) {
+        Object.defineProperty(target, name, descriptor);
+        if (name === 'createShadowRoot') {
+          console.log('createShadowRoot target from ', descriptor);
+          console.log('createShadowRoot target becomes ', Object.getOwnPropertyDescriptor(target, name));
+        }
+      } else {
+        if (name === 'createShadowRoot')
+          console.log('_wrapPropertyDescriptor createShadowRoot targetDescriptor ', targetDescriptor);
+      }
       return descriptor;
   },
 
@@ -763,21 +778,31 @@ FakeMaker.prototype = {
       getOwnPropertyDescriptor: function(target, name) {
         // Read the descriptor from the real object.
         var descriptor = Object.getOwnPropertyDescriptor(obj, name);
-        console.log('getOwnPropertyDescriptor ' + name + ' is ' + !!descriptor);
+        console.log('getOwnPropertyDescriptor ' + name + ' is ' + !!descriptor, descriptor);
         if (!descriptor) {
           console.log('getOwnPropertyDescriptor obj ' + Object.getOwnPropertyNames(obj).join(', '))
           console.log('getOwnPropertyDescriptor target ' + Object.getOwnPropertyNames(target).join(', '))
           return descriptor;
         }
+
         // Was this property written by JS onto obj?
         var result = fakeMaker.getExpandoProperty(obj, name);
         console.log('getOwnPropertyDescriptor ' + name + ' is expando ' + !!result);
-        if (result)
+        if (result) {
+          // Store the descriptor on the target to fool the validator
+          var targetDescriptor = Object.getOwnPropertyDescriptor(target, name);
+          if (!targetDescriptor)
+            Object.defineProperty(target, name, descriptor);
           return descriptor; // Yes, then player need not know about it.
+        }
 
-        if (descriptor.value) // Wrap the value and store it on the shadow.
-          return fakeMaker._wrapPropertyDescriptor(target, name, descriptor, obj, path);
-        else
+        if (descriptor.value) { // Wrap the value and store it on the shadow.
+          var wrappedDescriptor = fakeMaker._wrapPropertyDescriptor(target, name, descriptor, obj, path);
+          console.log('wrappedDescriptor ', wrappedDescriptor);
+          console.log('targetDescriptor ',Object.getOwnPropertyDescriptor(target, name));
+          return wrappedDescriptor;
+        }
+
           throw new Error('getOwnPropertyNames no descriptor value ' + name, descriptor)
       },
 
@@ -807,39 +832,37 @@ FakeMaker.prototype = {
           console.log('apply: thisArg === window: ' + (thisArg === window));
           console.log('apply: obj === window: ' + (obj === window));
         }
-        return fakeMaker._wrapCallResult(obj, path + '()', function() {
-          // If we now call a DOM function it could operate on the proxy and cause
-          // records to be created; In the player there will be no DOM function and
-          // these records will not be replayed. So we pass original objects except
-          // for callback functions.
-          var deproxiedthisArg = fakeMaker.toObject(thisArg);
-          deproxiedthisArg = deproxiedthisArg || thisArg;
-          var deproxyArgs;
-          var indexOfProxy = fakeMaker._proxiedObjects.indexOf(obj);
-          var proxy = fakeMaker._proxiesOfObjects[indexOfProxy];
-          var hasDOMCallbacks = fakeMaker._hasDOMCallbacks.indexOf(proxy);
-          if (calls_debug) {
-            console.log('apply: ' + path + ' proxy index  ', indexOfProxy + ' isA ' + (typeof proxy) + ' isAProxy ' + fakeMaker.isAProxy(proxy));
-            console.log('apply: ' + path + ' __DOMFunctionsThatCallback ', hasDOMCallbacks);
-          }
-          if (hasDOMCallbacks !== -1)
-            deproxiedArgs = fakeMaker._proxyForDOMCallbacks[hasDOMCallbacks](args, deproxiedthisArg, path);
-          else
-            deproxiedArgs = fakeMaker.deproxyArgs(args, deproxiedthisArg, path);
+        // If we now call a DOM function it could operate on the proxy and cause
+        // records to be created; In the player there will be no DOM function and
+        // these records will not be replayed. So we pass original objects except
+        // for callback functions.
+        var deproxiedthisArg = fakeMaker.toObject(thisArg);
+        deproxiedthisArg = deproxiedthisArg || thisArg;
+        var deproxyArgs;
+        var indexOfProxy = fakeMaker._proxiedObjects.indexOf(obj);
+        var proxy = fakeMaker._proxiesOfObjects[indexOfProxy];
+        var hasDOMCallbacks = fakeMaker._hasDOMCallbacks.indexOf(proxy);
+        if (calls_debug) {
+          console.log('apply: ' + path + ' proxy index  ', indexOfProxy + ' isA ' + (typeof proxy) + ' isAProxy ' + fakeMaker.isAProxy(proxy));
+          console.log('apply: ' + path + ' __DOMFunctionsThatCallback ', hasDOMCallbacks);
+        }
+        if (hasDOMCallbacks !== -1)
+          deproxiedArgs = fakeMaker._proxyForDOMCallbacks[hasDOMCallbacks](args, deproxiedthisArg, path);
+        else
+          deproxiedArgs = fakeMaker.deproxyArgs(args, deproxiedthisArg, path);
 
-          if (calls_debug) {
-            console.log("apply with this: "+ typeof(deproxiedthisArg) + ' proxyIndex: ' + fakeMaker._proxiesOfObjects.indexOf(thisArg) + ", args " + deproxiedArgs.length + ' at ' + path + '()');
-            deproxiedArgs.forEach(function(arg, index) {
-              console.log('apply ['+index +']=' + typeof(arg));
-            });
-          }
-          return Reflect.apply(obj, deproxiedthisArg, deproxiedArgs);
-        });
+        if (calls_debug) {
+          console.log("apply with this: "+ typeof(deproxiedthisArg) + ' proxyIndex: ' + fakeMaker._proxiesOfObjects.indexOf(thisArg) + ", args " + deproxiedArgs.length + ' at ' + path + '()');
+          deproxiedArgs.forEach(function(arg, index) {
+            console.log('apply ['+index +']=' + typeof(arg));
+          });
+        }
+        var result = Reflect.apply(obj, deproxiedthisArg, deproxiedArgs);
+        return fakeMaker._wrapCallResult(result, thisArg, path + '()');
       },
 
       // new target(args)
       construct: function(target, args) {
-        return fakeMaker._wrapCallResult(obj, path + '.new()', function() {
           var deproxiedArgs = fakeMaker.deproxyArgs(args, obj, path);
           if (calls_debug) {
             console.log('construct '+ path + ' args ' + args.length);
@@ -863,15 +886,64 @@ FakeMaker.prototype = {
             returnValue = Reflect.construct(obj, deproxiedArgs);
           if (calls_debug)
             console.log("construct result " + ((returnValue !== null) ? typeof(returnValue) : 'null'));
-          return returnValue;
-        });
+          return fakeMaker._wrapCallResult(returnValue, obj, path + '.new()');
       },
 
-      // DOM object properties enumeration fails on Chrome, so we have to use the Reflect version.
-      enumerate: function(target) {
-        console.log('enumerate ' + path);
-        return Reflect.enumerate(obj);
+      getOwnPropertyNames: function(target) {
+        var result = Reflect.getOwnPropertyNames(obj);
+        if (recording_debug)
+          console.log('getOwnPropertyNames ', result);
+        // Mark these names as accessed so they are written on the object ref for playback.
+        var indexOfProxy = fakeMaker._proxiedObjects.indexOf(obj);
+        result.forEach(function(name) {
+          fakeMaker._markAccess(indexOfProxy, name);
+        });
+        return result;
       },
+
+      getPrototypeOf: function(target) {
+        var result = fakeMaker._wrapReturnValue(Object.getPrototypeOf(obj), obj, path + '.getPrototypeOf');
+        if (recording_debug)
+          console.log('getPrototypeOf ', result);
+        return result;
+      },
+      setPrototypeOf: function(target, newProto) {
+        fakeMaker._preSet(obj, '__proto__', newProto);
+        return Reflect.setPrototypeOf(obj, newProto);
+      },
+      deleteProperty: function(target, name) {
+        // TODO: we need to remove properties on the Player?
+        return Reflect.deleteProperty(obj, name);
+      },
+      enumerate: function(target) {
+        var result = Reflect.enumerate(obj);
+        if (recording_debug)
+          console.log('enumerate ', result);
+        // Mark these names as accessed so they are written on the object ref for playback.
+        var indexOfProxy = fakeMaker._proxiedObjects.indexOf(obj);
+        result.forEach(function(name) {
+          fakeMaker._markAccess(indexOfProxy, name);
+        });
+        return result;
+      },
+      preventExtensions: function(target) {
+        // Forward only.
+        var result = Reflect.preventExtensions(obj);
+        return fakeMaker._lookupProxyObject(result, result, path);
+      },
+      isExtensible: function(target) {
+        var result = Reflect.isExtensible(obj);
+        if (recording_debug)
+          console.log('isExtensible ', result);
+        return fakeMaker._record(result, path + '.isExtensible');
+      },
+      ownsKeys: function(target) {
+        var result = ownKeys(obj);
+        if (recording_debug)
+          console.log('ownsKeys ', result);
+        // An array of strings, no need to wrap in proxy
+        return fakeMaker._record(result, path + '.enumerate');
+      }
     };
 
     var proxy = Proxy(shadow,  override(makeReflectAll(obj), overrides));
@@ -958,9 +1030,7 @@ FakeMaker.prototype = {
           console.log('_replaceObjectsAndFunctions '+ propertyName
               +' found proxy, returning ref ', this._objectReferences[index]);
         }
-      } else {
-        throw new Error('_replaceObjectsAndFunctions did not find object in _objectsReferenced ' + propertyName);
-      }
+      } // else the propertyName may have been used in getOwnPropertyNames only
     }
     return index;
   },
@@ -972,7 +1042,8 @@ FakeMaker.prototype = {
     var jsonablePropertyRep = {};
     if (propertyName === '__proto__') {
       var index = this._getObjectReferenceIndex(Object.getPrototypeOf(obj), propertyName);
-      jsonablePropertyRep = this._objectReferences[index];
+      if (index !== -1)
+        jsonablePropertyRep = this._objectReferences[index];
       if (recording_debug)
         console.log('_replaceObjectsAndFunctions ' + propertyName + ' jsonable ', jsonablePropertyRep);
       return jsonablePropertyRep;
@@ -992,7 +1063,8 @@ FakeMaker.prototype = {
          jsonablePropertyRep = 1; // a value, use getter to recording.
        } else {
         var index = this._getObjectReferenceIndex(value, propertyName);
-        jsonablePropertyRep = this._objectReferences[index];
+        if (index !== -1)
+          jsonablePropertyRep = this._objectReferences[index];
       }
     }
     if (recording_debug)

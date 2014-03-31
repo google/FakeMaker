@@ -15,6 +15,7 @@
 suite('FreeVariableChecker.traceur.js', function() {
 
   setup(function() {
+    traceur.options.reset();
     traceur.options.freeVariableChecker = true;
   });
 
@@ -33,7 +34,7 @@ suite('FreeVariableChecker.traceur.js', function() {
     var url = 'http://www.test.com/';
     var loaderHooks = new LoaderHooks(reporter, url);
     var loader = new TraceurLoader(loaderHooks);
-    loader.script(contents, url);
+    loader.script(contents, {name: name, address: url});
     return errors;
   }
 
@@ -48,7 +49,8 @@ suite('FreeVariableChecker.traceur.js', function() {
   }
 
   test('FreeVariables', function() {
-    traceur.options.experimental = true;
+    traceur.options.freeVariableChecker = true;
+    traceur.options.blockBinding = true;
     assertCompileError('var y = xxx;', 'xxx is not defined');
     assertCompileError('xxx(1,2,3);', 'xxx is not defined');
     assertCompileError('function foo() { return xxx; }', 'xxx is not defined');

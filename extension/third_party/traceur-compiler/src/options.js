@@ -29,6 +29,7 @@ export var transformOptions = Object.create(null);
 
 var defaultValues = Object.create(null);
 var experimentalOptions = Object.create(null);
+var moduleOptions = ['amd', 'commonjs', 'instantiate', 'inline', 'register'];
 
 export var options = {
 
@@ -59,6 +60,22 @@ export var options = {
       return true;
     });
     return value;
+  },
+
+  modules_: 'register',
+
+  get modules() {
+    return this.modules_;
+  },
+
+  set modules(value) {
+    if (typeof value === 'boolean' && !value)
+      value = 'register';
+    if (moduleOptions.indexOf(value) === -1) {
+      throw new Error('Invalid \'modules\' option \'' + value + '\', not in ' +
+        moduleOptions.join(', '));
+    }
+    this.modules_ = value;
   },
 
   scripts: []
@@ -252,7 +269,7 @@ function addFeatureOption(name, kind) {
     configurable: true
   });
 
-  var defaultValue = kind === ON_BY_DEFAULT;
+  var defaultValue = options[name] || kind === ON_BY_DEFAULT;
   options[name] = defaultValue;
   defaultValues[name] = defaultValue;
 }
@@ -274,7 +291,7 @@ addFeatureOption('defaultParameters', ON_BY_DEFAULT);  // Cant find in the spec
 addFeatureOption('destructuring', ON_BY_DEFAULT);      // 11.13.1
 addFeatureOption('forOf', ON_BY_DEFAULT);              // 12.6.4
 addFeatureOption('generatorComprehension', ON_BY_DEFAULT);
-addFeatureOption('generators', ON_BY_DEFAULT); // 13.4, incomplete
+addFeatureOption('generators', ON_BY_DEFAULT); // 13.4
 addFeatureOption('modules', ON_BY_DEFAULT);    // 14
 addFeatureOption('numericLiterals', ON_BY_DEFAULT);
 addFeatureOption('propertyMethods', ON_BY_DEFAULT);    // 13.3
@@ -284,9 +301,9 @@ addFeatureOption('spread', ON_BY_DEFAULT);             // 11.1.4, 11.2.5
 addFeatureOption('templateLiterals', ON_BY_DEFAULT);   // 7.6.8
 
 // EXPERIMENTAL
+addFeatureOption('asyncFunctions', EXPERIMENTAL);
 addFeatureOption('blockBinding', EXPERIMENTAL);       // 12.1
 addFeatureOption('symbols', EXPERIMENTAL);
-addFeatureOption('deferredFunctions', EXPERIMENTAL);
 addFeatureOption('types', EXPERIMENTAL);
 addFeatureOption('annotations', EXPERIMENTAL);
 

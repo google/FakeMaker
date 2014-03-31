@@ -72,9 +72,10 @@ test-runtime: bin/traceur-runtime.js $(RUNTIME_TESTS)
 test: test/test-list.js bin/traceur.js $(COMPILE_BEFORE_TEST) \
 	test/unit/runtime/traceur-runtime \
 	wiki test/amd-compiled test/commonjs-compiled test-interpret \
-	test-interpret-absolute test-inline-module-error test-interpret-throw \
+	test-interpret-absolute test-inline-module-error \
 	test-version test/unit/tools/SourceMapMapping
 	node_modules/.bin/mocha $(MOCHA_OPTIONS) $(TESTS)
+	$(MAKE) test-interpret-throw
 
 test/unit/tools/SourceMapMapping: bin/traceur-runtime.js src/node/System.js test/unit/tools/SourceMapMapping.generated.js
 	node_modules/.bin/mocha $(MOCHA_OPTIONS) $^
@@ -128,7 +129,13 @@ test/unit/runtime/traceur-runtime: \
 	node $<
 
 test-version:
-	./traceur -v | grep 'traceur@[0-9]*\.[0-9*\.[0-9]*'
+	./traceur -v | grep '[0-9]*\.[0-9*\.[0-9]*'
+
+# Skip sloppy tests because the Promise pollyfil is defined in a module
+# and module context in ES6 is strict by default
+test-promise:
+	node_modules/promises-aplus-tests/lib/cli.js \
+	test/node-promise-adapter.js --grep "2.2.5" --grep "sloppy" --invert
 
 boot: clean build
 

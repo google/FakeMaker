@@ -96,8 +96,12 @@ export class FromOptionsTransformer extends MultiTransformer {
         case 'instantiate':
           append(InstantiateModuleTransformer);
           break;
-        default:
+        case 'register':
           append(ModuleTransformer);
+          break;
+        default:
+          // The options processing should prevent us from getting here.
+          throw new Error('Invalid modules transform option');
       }
     }
 
@@ -152,7 +156,7 @@ export class FromOptionsTransformer extends MultiTransformer {
       append(BlockBindingTransformer);
 
     // generator must come after for of and rest parameters
-    if (transformOptions.generators || transformOptions.deferredFunctions)
+    if (transformOptions.generators || transformOptions.asyncFuntions)
       append(GeneratorTransformPass);
 
     if (transformOptions.symbols)

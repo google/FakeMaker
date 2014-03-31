@@ -14,8 +14,12 @@
 
 suite('Loader.js', function() {
 
-  var MutedErrorReporter =
-      $traceurRuntime.ModuleStore.getForTesting('src/util/MutedErrorReporter').MutedErrorReporter;
+  function get(name) {
+    return $traceurRuntime.ModuleStore.getForTesting(name);
+  }
+
+  var MutedErrorReporter = get('src/util/MutedErrorReporter').MutedErrorReporter;
+  var resolveUrl = get('src/util/url').resolveUrl;
 
   var reporter, baseURL;
 
@@ -27,7 +31,7 @@ suite('Loader.js', function() {
   teardown(function() {
     assert.isFalse(reporter.hadError());
     var loader = getLoader();
-    loader.options.modules = true;
+    loader.options.modules = 'register';
     System.baseURL = baseURL;
   });
 
@@ -40,8 +44,7 @@ suite('Loader.js', function() {
     fileLoader = require('../../../src/node/nodeLoader.js');
     System = require('../../../src/node/System.js');
   } else {
-    url = traceur.util.resolveUrl(window.location.href,
-                                  'unit/runtime/modules.js');
+    url = resolveUrl(window.location.href, 'unit/runtime/modules.js');
   }
 
   function getLoaderHooks(opt_reporter) {

@@ -1038,7 +1038,7 @@ ProtoPropertiesSrc += "window.preTestProtoProperties = AnotherPrototype.__proto_
 ProtoPropertiesSrc +=   "AnotherPrototype.createdCallback = function() {\n";
 ProtoPropertiesSrc +=   "    var myProto = this.__proto__;\n";
 ProtoPropertiesSrc +=   "    var myProtoProto = myProto.__proto__;\n";
-ProtoPropertiesSrc +=   "    window.testProtoProperties = Object.getOwnPropertyNames(this.__proto__.__proto__);\n";
+ProtoPropertiesSrc +=   "    window.testProtoProperties = Object.getOwnPropertyNames(myProtoProto);\n";
 ProtoPropertiesSrc +=   "}\n";
 ProtoPropertiesSrc +=   "document.registerElement('polymer-another-element', {\n";
 ProtoPropertiesSrc +=   "  prototype: AnotherPrototype\n";
@@ -1062,6 +1062,7 @@ tests['testProtoProperties'] = function() {
 }
 
 tests['checkProtoProperties'] = function() {
+  var expected = Object.getOwnPropertyNames(HTMLElement.prototype).join(',');
   var transcoded = transcode(ProtoPropertiesSrc, 'checkProtoProperties.js');
   console.log('transcoded: ' + transcoded);
   restoreJsonData('testProtoProperties', function(json) {
@@ -1069,8 +1070,9 @@ tests['checkProtoProperties'] = function() {
     var fakePlayer = new FakePlayer(json);
     window.windowProxy = fakePlayer.startingObject();
     fakePlayer.initialize();
-    var result = eval(transcoded);
-    if (isSame('code-mirror', windowProxy.testProtoProperties))
+    eval(transcoded);
+    var actual = windowProxy.testProtoProperties.join(',');
+    if (isSame(actual, expected))
           pass();
   });
 };

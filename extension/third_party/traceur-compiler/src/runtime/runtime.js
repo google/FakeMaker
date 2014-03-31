@@ -294,10 +294,20 @@
     return object;
   }
 
-  function toObject(value) {
-    if (value == null)
+  function isObject(x) {
+    return x != null && (typeof x === 'object' || typeof x === 'function');
+  }
+
+  function toObject(x) {
+    if (x == null)
       throw $TypeError();
-    return $Object(value);
+    return $Object(x);
+  }
+
+  function assertObject(x) {
+    if (!isObject(x))
+      throw $TypeError(x + ' is not an Object');
+    return x;
   }
 
   function spread() {
@@ -566,12 +576,10 @@
         moveNext(ctx);
       };
     }
-    ctx.createErrback = function(newState) {
-      return function (err) {
-        ctx.state = newState;
-        ctx.err = err;
-        moveNext(ctx);
-      };
+
+    ctx.errback = function(err) {
+      handleCatch(ctx, err);
+      moveNext(ctx);
     };
 
     moveNext(ctx);
@@ -584,21 +592,25 @@
         try {
           return innerFunction.call(self, ctx);
         } catch (ex) {
-          ctx.storedException = ex;
-          var last = ctx.tryStack_[ctx.tryStack_.length - 1];
-          if (!last) {
-            ctx.GState = ST_CLOSED;
-            ctx.state = END_STATE;
-            throw ex;
-          }
-
-          ctx.state = last.catch !== undefined ? last.catch : last.finally;
-
-          if (last.finallyFallThrough !== undefined)
-            ctx.finallyFallThrough = last.finallyFallThrough;
+          handleCatch(ctx, ex);
         }
       }
     };
+  }
+
+  function handleCatch(ctx, ex) {
+    ctx.storedException = ex;
+    var last = ctx.tryStack_[ctx.tryStack_.length - 1];
+    if (!last) {
+      ctx.GState = ST_CLOSED;
+      ctx.state = END_STATE;
+      throw ex;
+    }
+
+    ctx.state = last.catch !== undefined ? last.catch : last.finally;
+
+    if (last.finallyFallThrough !== undefined)
+      ctx.finallyFallThrough = last.finallyFallThrough;
   }
 
   function setupGlobals(global) {
@@ -610,6 +622,7 @@
   setupGlobals(global);
 
   global.$traceurRuntime = {
+    assertObject: assertObject,
     asyncWrap: asyncWrap,
     createClass: createClass,
     defaultSuperCall: defaultSuperCall,
