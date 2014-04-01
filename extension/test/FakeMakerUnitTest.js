@@ -10,6 +10,12 @@
 var tests = {};
 var json = {};
 
+function dumpTrace(filename, transcoded) {
+  var trace = decodeTraceToOffsets(__F_.calls, [filename], [transcoded]);
+  trace = trace.split('\n').map(function(line, index) {return index + ') ' + line;})
+  console.log('trace: \n', trace.join('\n'));
+}
+
 // Each test must take care to match calls on proxy with calls on replay
 
 var objWithPrimitive = {foo: 1};
@@ -1156,11 +1162,12 @@ tests['checkUpgradeCallback'] = function() {
 
 var UpgradeDeepSrc = "var UpgradePrototype = Object.create(HTMLElement.prototype);\n";
 UpgradeDeepSrc +=   "UpgradePrototype.createdCallback = function() {\n";
+UpgradeDeepSrc +=   "    console.assert(this.__proto__.__proto__ === HTMLElement.prototype);\n";
 UpgradeDeepSrc +=   "    console.log('this', this.getAttribute('name'));\n";
 UpgradeDeepSrc +=   "    this.init();\n";
 UpgradeDeepSrc +=   "}\n";
 UpgradeDeepSrc +=   "UpgradePrototype.init = function() {\n";
-UpgradeDeepSrc +=   "    window.testUpgradeDeep = this.getAttribute('name');\n";
+UpgradeDeepSrc +=   "    window.testUpgradeDeep = (this.__proto__.__proto__ === HTMLElement.prototype) ? this.getAttribute('name') : 'invalid';\n";
 UpgradeDeepSrc +=   "}\n";
 UpgradeDeepSrc +=   "document.registerElement('polymer-element', {\n";
 UpgradeDeepSrc +=   "  prototype: UpgradePrototype\n";
@@ -1178,6 +1185,8 @@ tests['testUpgradeDeep'] = function() {
 
   ourConsole.log('testUpgradeDeep', JSON.parse(json.testUpgradeDeep));
   saveJsonData('testUpgradeDeep', json);
+
+  dumpTrace('testUpgradeDeep.js', transcoded);
   return true;
 }
 
@@ -1189,7 +1198,11 @@ tests['checkUpgradeDeep'] = function() {
     var fakePlayer = new FakePlayer(json);
     window.windowProxy = fakePlayer.startingObject();
     fakePlayer.initialize();
-    var result = eval(transcoded);
+    try {
+      var result = eval(transcoded);
+    } catch(e) {
+        dumpTrace('checkUpgradeDeep.js', transcoded);
+    }
     if (isSame('code-mirror', windowProxy.testUpgradeDeep))
           pass();
   });
@@ -1213,7 +1226,7 @@ tests['testPropertyEnumeration'] = function() {
 }
 
 
-// For some reason the V8 proxy does not enumerate DOM properties correctly.
+// All of the Proxy traps must be implemented, including enumerate.
 ForEachsrc = "(function() { var forEach = Array.prototype.forEach.call.bind(Array.prototype.forEach); \n";
 ForEachsrc += " var ary = document.querySelectorAll('button');\n";
 ForEachsrc += " function fn(entry) {window.testForEach = window.testForEach || 0; window.testForEach++;}\n";
@@ -1228,7 +1241,7 @@ tests['testForEach'] = function() {
   windowProxy = fakeMaker.makeFakeWindow();
   eval.call(window, transcoded);
 
-  return isSame(1, windowProxy.testForEach);
+  return isSame(2, windowProxy.testForEach);
 }
 
 var DefinePropertySrc = "var descriptor = {value: true, enumerable: true };\n";
@@ -1248,6 +1261,28 @@ tests['testDefinePropertyPointerEnabled'] = function() {
   saveJsonData('testDefinePropertyPointerEnabled', json);
   return true;
 }
+
+var WebKitShadowRootSrc = "var wksr = Element.webkitCreateShadowRoot;\n";
+WebKitShadowRootSrc +=   "var sr = Element.createShadowRoot;\n";
+WebKitShadowRootSrc += "var wksrPD = Object.getOwnPropertyDescriptor(Element, 'webkitCreateShadowRoot');\n";
+WebKitShadowRootSrc +=   "var srPD = Object.getOwnPropertyDescriptor(Element, 'createShadowRoot');\n";
+
+tests['testWebKitShadowRoot'] = function() {
+  var ourConsole = console;
+  var transcoded = transcode(WebKitShadowRootSrc, 'testWebKitShadowRoot.js');
+  console.log('transcoded: ' + transcoded);
+  var fakeMaker = new FakeMaker();
+  windowProxy = fakeMaker.makeFakeWindow();
+  eval(transcoded);
+
+  json.testWebKitShadowRoot = fakeMaker.toJSON();
+
+  ourConsole.log('testWebKitShadowRoot', JSON.parse(json.testWebKitShadowRoot));
+  saveJsonData('testDefinePropertyPointerEnabled', json);
+  return true;
+}
+
+
 
 tests['testDetectEval'] = function() {
   var ourConsole = console;
