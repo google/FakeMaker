@@ -1123,10 +1123,14 @@ tests['checkCreatedCallback'] = function() {
 };
 
 
-var UpgradeCallbackSrc = "var UpgradePrototype = Object.create(HTMLElement.prototype);\n";
-UpgradeCallbackSrc +=   "UpgradePrototype.createdCallback = function() {\n";
+var UpgradeCallbackSrc = "var UpgradePrototype = Object.create(HTMLElement.prototype, {"
+UpgradeCallbackSrc +=   "  createdCallback: {value: function() {\n";
 UpgradeCallbackSrc +=   "    window.testUpgradeCallback = this.getAttribute('name');\n";
-UpgradeCallbackSrc +=   "}\n";
+UpgradeCallbackSrc +=   "}},\n";
+UpgradeCallbackSrc +=   "  items: { get: function() {\n";
+UpgradeCallbackSrc +=   "   throw new Error('Must not be called');\n";
+UpgradeCallbackSrc +=   "  }}\n";
+UpgradeCallbackSrc +=   "});\n";
 UpgradeCallbackSrc +=   "document.registerElement('polymer-element', {\n";
 UpgradeCallbackSrc +=   "  prototype: UpgradePrototype\n";
 UpgradeCallbackSrc +=   "});\n";

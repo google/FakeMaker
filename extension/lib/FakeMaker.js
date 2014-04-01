@@ -173,7 +173,6 @@ function FakeMaker() {
             // Extend the chain
             prototypeCopy = Object.create(prototypeCopy);
             Object.getOwnPropertyNames(deproxiedProto).forEach(function(name) {
-              prototypeCopy[name] = deproxiedProto[name];
               if (name === 'createdCallback') {
                 var userCreatedCallback = deproxiedProto.createdCallback;
                 if (calls_debug)
@@ -184,6 +183,9 @@ function FakeMaker() {
                     console.log('createdCallback fires at ' + path)
                   proxiedCreatedCallback.call(this);
                 }
+              } else {
+                var descriptor = Object.getOwnPropertyDescriptor(deproxiedProto, name);
+                Object.defineProperty(prototypeCopy, name, descriptor);
               }
             });
             var deproxiedProtoLength = Object.getOwnPropertyNames(deproxiedProto).length;
@@ -847,6 +849,8 @@ FakeMaker.prototype = {
 
       defineProperty: function(target, name, desc) {
         try {
+          if (get_set_debug)
+            console.log('defineProperty ' + name + ' at ' + path);
           fakeMaker._preSet(obj, name, desc.value);
           var result = Object.defineProperty(obj, name, desc);
           // Write a descriptor on the target to avoid nanny error from reflect:
@@ -854,7 +858,7 @@ FakeMaker.prototype = {
           // Use the just-changed value of the obj descriptor, since the 'defineProperty' is really 'update properties'
           var updatedDescriptor = Object.getOwnPropertyDescriptor(obj, name);
           Object.defineProperty(target, name, updatedDescriptor);
-          if (name.indexOf('hadowRoot') !== -1) {
+          if (get_set_debug) {
             console.log('defineProperty: ' + name + ' input descriptor ', desc);
             console.log('defineProperty: ' + name + ' target descriptor ', Object.getOwnPropertyDescriptor(target, name));
             console.log('defineProperty: ' + name + ' obj descriptor ', updatedDescriptor);
@@ -931,6 +935,8 @@ FakeMaker.prototype = {
       },
 
       getOwnPropertyNames: function(target) {
+        if (recording_debug)
+          console.log('getOwnPropertyNames  at ' + path)
         var result = Reflect.getOwnPropertyNames(obj);
         if (recording_debug)
           console.log('getOwnPropertyNames ', result);
