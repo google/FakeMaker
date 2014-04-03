@@ -37,64 +37,6 @@ function FakeObjectRef(index) {
   this._fake_object_ref = index;
 }
 
-function makeReflectAll(obj) {
-  var reflectAll = Object.create(null);
-  reflectAll.get = function(target, name, receiver) {
-    return Reflect.get(obj, name, receiver);
-  }
-  reflectAll.set = function(target, name, value, receiver) {
-    return Reflect.set(obj, name, value, receiver);
-  }
-  reflectAll.has = function(target, name) {
-    return Reflect.has(obj, name);
-  }
-  reflectAll.apply = function(target, receiver, args) {
-    return Reflect.apply(obj, receiver, args);
-  }
-  reflectAll.construct = function(target, args) {
-    return Reflect.construct(obj, args);
-  }
-  reflectAll.getOwnPropertyNames = function(target, name) {
-    return Reflect.getOwnPropertyNames(obj);
-  }
-  reflectAll.getOwnPropertyDescriptor = function(target, name) {
-    return Reflect.getOwnPropertyDescriptor(obj, name);
-  }
-  reflectAll.defineProperty = function(target, name, desc) {
-    // Write on the shadow object.
-    return Object.defineProperty(target, name, desc);
-  }
-  reflectAll.getPrototypeOf = function(target) {
-    return Reflect.getPrototypeOf(obj);
-  }
-  reflectAll.setPrototypeOf = function(target, newProto) {
-    return Reflect.setPrototypeOf(obj, newProto);
-  }
-  reflectAll.deleteProperty = function(target, name) {
-    return Reflect.deleteProperty(obj, name);
-  }
-  reflectAll.enumerate = function(target) {
-    return Reflect.enumerate(obj);
-  }
-  reflectAll.preventExtensions = function(target) {
-    return Reflect.preventExtensions(obj);
-  }
-  reflectAll.isExtensible = function(target) {
-    return Reflect.isExtensible(target);
-  }
-  reflectAll.ownsKeys = function(target) {
-    return ownKeys(obj);
-  }
-  return reflectAll;
-}
-
-function override(overrideMe, overrides) {
-  Object.getOwnPropertyNames(overrides).forEach(function(propertyName) {
-    overrideMe[propertyName] = overrides[propertyName];
-  });
-  return overrideMe;
-}
-
 var proxyDepth = 0;
 
 function FakeMaker() {
@@ -154,6 +96,7 @@ function FakeMaker() {
         outputArgs.push(optionsCopy);
         if (options.prototype) {
           console.log('registerElement  ' + elementName);
+          var currentExpandoPrototypes = fakeMaker._expandoPrototypes.length;
           // Get the proto chain from obj to HTMLElement.prototype
           var chain = [];
           var found = fakeMaker._someProtos(options.prototype, function(proto) {
@@ -179,28 +122,34 @@ function FakeMaker() {
                   console.log('registerElement. before reset ' + userCreatedCallback);
                 prototypeCopy.createdCallback = function() {
                   var proxiedCreatedCallback = fakeMaker._proxyACallback(userCreatedCallback, path);
+                  if (elementName === 'polymer-ui-iconset')
+                    debugAll(true);
                   if (calls_debug)
-                    console.log('createdCallback fires at ' + path)
+                    console.log('createdCallback fires at ' + path);
                   proxiedCreatedCallback.call(this);
+                  if (elementName === 'polymer-ui-iconset')
+                    debugAll(false);
                 }
               } else {
                 var descriptor = Object.getOwnPropertyDescriptor(deproxiedProto, name);
+                if (calls_debug)
+                  console.log('registerElement, prototype property ' + name  + ' isAProxy: '+ fakeMaker.isAProxy(descriptor.value));
                 Object.defineProperty(prototypeCopy, name, descriptor);
               }
             });
-            var deproxiedProtoLength = Object.getOwnPropertyNames(deproxiedProto).length;
-            var prototypeCopyLength = Object.getOwnPropertyNames(prototypeCopy).length;
+            // Behind our back JS+DOM will make an expando property __proto__ of any newed
+            // custom elements and set it to the object value of prototype. Record these objects
+            // to avoid placing their properties on the originalProperties list.
+            fakeMaker._expandoPrototypes.push(prototypeCopy);
             if (calls_debug) {
+              var deproxiedProtoLength = Object.getOwnPropertyNames(deproxiedProto).length;
+              var prototypeCopyLength = Object.getOwnPropertyNames(prototypeCopy).length;
               console.log('proto comparison ' + deproxiedProtoLength +' === ' + prototypeCopyLength);
               console.assert(deproxiedProtoLength === prototypeCopyLength);
             }
           }, path + '.prototype');
 
           outputArgs[1].prototype = prototypeCopy;
-          // Behind our back JS+DOM will make an expando property __proto__ of any newed
-          // custom elements and set it to the object value of prototype. Record these objects
-          // to avoid placing their properties on the originalProperties list.
-          this._expandoPrototypes.push(prototypeCopy);
         } // TODO: do we need to process the upgrade even if the prototype is not set?
       }
       return outputArgs;
@@ -580,7 +529,7 @@ FakeMaker.prototype = {
     var isElementId = (obj === window) && this.isElementId(name);
 
     if (this._originalProperties[indexOfProxy].indexOf(name) === -1) {
-      // Not on the object when we created the proxy.
+      // Not on the object when we created the proxy: is an expando.
       if (!isElementId) {
         // Not a special case of an element id
         this.registerExpando(obj, name);
@@ -747,12 +696,15 @@ FakeMaker.prototype = {
     if (fakeMaker.isAProxy(obj))
       throw new Error('_createProxyObject on proxy object ' + path);
 
-    var overrides = {  // close over 'obj' and 'path'
+    var proxyImpl = {  // close over 'obj' and 'path'
 
       // target[name] or getter
       get: function(target, name, receiver) { // target is bound to the shadow object
         if (typeof obj === 'function' && name === 'name')
           throw new Error('get typeof function name === \'name\'');
+        // Secret property name for debugging
+        if (name === '__fakeMakerProxy')
+          return true;
         // Is this a DOM operation needed for JS to work correctly?
         var dontProxy = fakeMaker._dontProxy(path, obj, name);
         if (dontProxy)
@@ -803,6 +755,10 @@ FakeMaker.prototype = {
         }
 
         return result;
+      },
+
+      has: function(target, name) {
+        return Reflect.has(obj, name);
       },
 
       getOwnPropertyDescriptor: function(target, name) {
@@ -993,7 +949,7 @@ FakeMaker.prototype = {
       }
     };
 
-    var proxy = Proxy(shadow,  override(makeReflectAll(obj), overrides));
+    var proxy = Proxy(shadow,  proxyImpl);
 
     if (maker_debug)
       console.log('Accumulate originalProperties ' + path);

@@ -1254,7 +1254,8 @@ tests['checkFireEvent'] = function() {
     try {
       var result = eval(transcoded);
     } catch(e) {
-        dumpTrace('checkFireEvent.js', transcoded);
+      console.error('FAILED ', e.stack || e);
+      dumpTrace('checkFireEvent.js', transcoded);
     }
     if (isSame('code-mirror', windowProxy.testFireEvent))
           pass();
@@ -1276,7 +1277,6 @@ tests['testPropertyEnumeration'] = function() {
 
   return isSame('zoom', windowProxy.testPropertyEnumeration);
 }
-
 
 // All of the Proxy traps must be implemented, including enumerate.
 ForEachsrc = "(function() { var forEach = Array.prototype.forEach.call.bind(Array.prototype.forEach); \n";
