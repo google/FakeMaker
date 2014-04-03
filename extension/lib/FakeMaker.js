@@ -122,13 +122,9 @@ function FakeMaker() {
                   console.log('registerElement. before reset ' + userCreatedCallback);
                 prototypeCopy.createdCallback = function() {
                   var proxiedCreatedCallback = fakeMaker._proxyACallback(userCreatedCallback, path);
-                  if (elementName === 'polymer-ui-iconset')
-                    debugAll(true);
                   if (calls_debug)
                     console.log('createdCallback fires at ' + path);
                   proxiedCreatedCallback.call(this);
-                  if (elementName === 'polymer-ui-iconset')
-                    debugAll(false);
                 }
               } else {
                 var descriptor = Object.getOwnPropertyDescriptor(deproxiedProto, name);
@@ -764,16 +760,20 @@ FakeMaker.prototype = {
       getOwnPropertyDescriptor: function(target, name) {
         // Read the descriptor from the real object.
         var descriptor = Object.getOwnPropertyDescriptor(obj, name);
-        console.log('getOwnPropertyDescriptor ' + name + ' is ' + !!descriptor, descriptor);
+        if (get_set_debug)
+          console.log('getOwnPropertyDescriptor ' + name + ' is ' + !!descriptor, descriptor);
         if (!descriptor) {
-          console.log('getOwnPropertyDescriptor obj ' + Object.getOwnPropertyNames(obj).join(', '))
-          console.log('getOwnPropertyDescriptor target ' + Object.getOwnPropertyNames(target).join(', '))
+          if (get_set_debug) {
+            console.log('No descriptor, getOwnPropertyDescriptor obj ' + Object.getOwnPropertyNames(obj).join(', '));
+            console.log('No descriptor, getOwnPropertyDescriptor target ' + Object.getOwnPropertyNames(target).join(', '))            ;
+          }
           return descriptor;
         }
 
         // Was this property written by JS onto obj?
         var result = fakeMaker.getExpandoProperty(obj, name);
-        console.log('getOwnPropertyDescriptor ' + name + ' is expando ' + !!result);
+        if (get_set_debug)
+          console.log('getOwnPropertyDescriptor ' + name + ' is expando ' + !!result);
         if (result) {
           // Store the descriptor on the target to fool the validator
           var targetDescriptor = Object.getOwnPropertyDescriptor(target, name);
@@ -784,7 +784,7 @@ FakeMaker.prototype = {
 
         if (descriptor.value) { // Wrap the value and store it on the shadow.
           var wrappedDescriptor = fakeMaker._wrapPropertyDescriptor(target, name, descriptor, obj, path);
-          if (name.indexOf('hadowRoot') !== -1) {
+          if (get_set_debug){
             var targetDescriptor = Object.getOwnPropertyDescriptor(target, name);
             console.log('getOwnPropertyDescriptor: ' + name + ' original descriptor ', descriptor);
             console.log('wrappedDescriptor ', wrappedDescriptor);
