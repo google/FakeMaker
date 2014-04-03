@@ -198,35 +198,57 @@ FakePlayer.prototype = {
     }
   },
 
+  copyOwnProperties: function(from, to) {
+      Object.getOwnPropertyNames(from).forEach(function(name) {
+        var descriptor = Object.getOwnPropertyDescriptor(from, name);
+        Object.defineProperty(to, name, descriptor);
+      });
+  },
+
+  copyProtoChainToArray: function(obj, path) {
+    var protoChainArray = [];
+    this._someProtos(obj, function(fromProto) {
+      if (fromProto === Object.prototype)
+        return true;
+      var toProto = {};
+      this.copyOwnProperties(fromProto, toProto);
+      protoChainArray.push(toProto);
+    }.bind(this), path);
+    return protoChainArray;
+  },
+
+  setProtoChain: function(obj, protoChainArray) {
+      protoChainArray.reduce(function(obj, proto) {
+        Object.setPrototypeOf(obj, proto);
+        return proto;
+      }, obj);
+      return obj;
+  },
+
   checkForCallback: function(name, args) {
+    var fakePlayer = this;
     if (name === 'registerElement') {
       if (debug_player)
         console.log('checkForCallback found ' + name);
       var options = args[1];  // a ref to an object created by JS
-      if (options && options.prototype) {
-        FakeCommon.lifeCycleOperations.forEach(function(key) {
-          if (options.prototype[key]) {
-            var fakePlayer = this;
-            function lifeCycleWrapper() {
-              // The 'this' incoming has getters for DOM operations that were set by
-              // proxy 'get', but other functions on the proto chain are JS expandos.
-              // We need to copy them on to our chain.
-              var fromProto = options.prototype;
-              fakePlayer._someProtos(this.__proto__, function(proto) {
-                Object.getOwnPropertyNames(fromProto).forEach(function(name) {
-                  var descriptor = Object.getOwnPropertyDescriptor(fromProto, name);
-                  Object.defineProperty(proto, name, descriptor);
-                });
-                fromProto = fromProto.__proto__;
-                return !fromProto;
-              }, 'registerElement.' + key);
-              options.prototype[key].apply(this, arguments);
-            }
-            this.callbacks.push(lifeCycleWrapper);
-            if (debug_player)
-              console.log('checkForCallback found ' + key + ' under ' + name + ' and stored it a ' + (this.callbacks.length -1), options.prototype[key]);
+      if (options && options.prototype) { // then JS code provided some functions for registerElement.
+        // Rearrange the input.
+        var protoChainArray = this.copyProtoChainToArray(options.prototype);
+        var prototype = protoChainArray.shift();
+        this.setProtoChain(prototype, protoChainArray);
+        var createdCallback;
+        if ('createdCallback' in options.prototype) {
+          function lifeCycleWrapper()  {
+            var fakeCustomElement = Object.create(options.prototype);
+            // 'this' is a fake HTMLElement, it may have existing replay functions.
+            fakePlayer.copyOwnProperties(this, fakeCustomElement);
+            // complete the callback using the newly faked CustomElement.
+            options.prototype.createdCallback.apply(fakeCustomElement, []);
           }
-        }.bind(this));
+          this.callbacks.push(lifeCycleWrapper);
+        } else {
+          throw new Error('registerElement options.prototype has no createdCallback');
+        }
       }
     } else {
       for(var i = 0; i < args.length; i++) {
