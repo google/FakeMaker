@@ -312,7 +312,8 @@ FakePlayer.prototype = {
         return;
       }
       if (name === '_fake_proto_') {
-        Object.setPrototypeOf(shell, fakePlayer._rebuiltObjects[propertyRep._fake_object_ref]);
+        if (!propertyRep._fake_undefined)
+          Object.setPrototypeOf(shell, fakePlayer._rebuiltObjects[propertyRep._fake_object_ref]);
         return;
       }
       if (propertyRep._fake_function_) {

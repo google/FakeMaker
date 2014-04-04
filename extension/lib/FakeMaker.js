@@ -362,7 +362,7 @@ FakeMaker.prototype = {
       this._recording.push(value);
     } else if (typeof value === 'undefined') {
       // we cannot JSON.stringify undefined.
-      this._recording.push({'_fake_undefined': undefined});
+      this._recording.push({'_fake_undefined': true});
     } else if (typeof value === 'function') {
       throw new Error('Attempt to record a function');
     } else {
@@ -548,11 +548,11 @@ FakeMaker.prototype = {
       var ref;
       if (indexOfRef !== -1) {
         ref = this._objectReferences[indexOfRef];
+      } else {
+        throw new Error('_markAccess ' + name + ' is not in _objectsReferenced ' + Object.getOwnPropertyNames(obj).join(', '));
       }
       console.log('Counted access to ' + name + ' = ' + accessed[name] +
             (ref ?  ', ref ' + ref._fake_object_ref : ', not refed <<<!!??'));
-      if (name === '__proto__' && accessed[name] > 20)
-        throw new Error('Infinite __proto__ recursion?');
     }
 
     if (typeof accessed[name] !== 'number')
@@ -722,7 +722,11 @@ FakeMaker.prototype = {
         if (name === '__proto__') { // then we can't use getOwn* functions
           if (get_set_debug)
             console.log('get __proto__ at ' + path  + '.__proto__');
-          return fakeMaker._wrapReturnValue(Object.getPrototypeOf(obj), obj, path + '.__proto__');
+          var protoValue = Object.getPrototypeOf(obj);
+          if (!protoValue)
+            return fakeMaker._wrapReturnValue(undefined, undefined, path + '.' + name);
+          else
+            return fakeMaker._wrapReturnValue(protoValue, obj, path + '.__proto__');
         }
 
         if (get_set_debug)
@@ -804,24 +808,19 @@ FakeMaker.prototype = {
       },
 
       defineProperty: function(target, name, desc) {
-        try {
-          if (get_set_debug)
-            console.log('defineProperty ' + name + ' at ' + path);
-          fakeMaker._preSet(obj, name, desc.value);
-          var result = Object.defineProperty(obj, name, desc);
-          // Write a descriptor on the target to avoid nanny error from reflect:
-          // "cannot successfully define a non-configurable descriptor for configurable or non-existent property"
-          // Use the just-changed value of the obj descriptor, since the 'defineProperty' is really 'update properties'
-          var updatedDescriptor = Object.getOwnPropertyDescriptor(obj, name);
-          Object.defineProperty(target, name, updatedDescriptor);
-          if (get_set_debug) {
-            console.log('defineProperty: ' + name + ' input descriptor ', desc);
-            console.log('defineProperty: ' + name + ' target descriptor ', Object.getOwnPropertyDescriptor(target, name));
-            console.log('defineProperty: ' + name + ' obj descriptor ', updatedDescriptor);
-            console.log('defineProperty result on obj ', result);
-          }
-        } catch (ex) {
-          console.error(ex.stack || ex);
+        if (get_set_debug)
+          console.log('defineProperty ' + name + ' at ' + path);
+        fakeMaker._preSet(obj, name, desc.value);
+        var result = Object.defineProperty(obj, name, desc);
+        // Write a descriptor on the target.
+        // Use the just-changed value of the obj descriptor, since the 'defineProperty' is really 'update properties'
+        var updatedDescriptor = Object.getOwnPropertyDescriptor(obj, name);
+        Object.defineProperty(target, name, updatedDescriptor);
+        if (get_set_debug) {
+          console.log('defineProperty: ' + name + ' input descriptor ', desc);
+          console.log('defineProperty: ' + name + ' target descriptor ', Object.getOwnPropertyDescriptor(target, name));
+          console.log('defineProperty: ' + name + ' obj descriptor ', updatedDescriptor);
+          console.log('defineProperty result on obj ', result);
         }
         return result;
       },
@@ -1009,10 +1008,12 @@ FakeMaker.prototype = {
         console.log('_preparePropertiesForJSON ' + key +
           ' with ' + accessedProperties[key] + ' accesses');
       }
-      if (key === '__proto__')
+      if (key === '__proto__') {
         jsonable._fake_proto_ = this._replaceObjectsAndFunctions(obj, key);
-      else
+      }
+      else {
         jsonable[key] = this._replaceObjectsAndFunctions(obj, key);
+      }
     }.bind(this));
 
     return jsonable;
@@ -1044,9 +1045,16 @@ FakeMaker.prototype = {
   _replaceObjectsAndFunctions: function(obj, propertyName) {
     var jsonablePropertyRep = {};
     if (propertyName === '__proto__') {
-      var index = this._getObjectReferenceIndex(Object.getPrototypeOf(obj), propertyName);
-      if (index !== -1)
-        jsonablePropertyRep = this._objectReferences[index];
+      var protoValue = Object.getPrototypeOf(obj);
+      if (!protoValue) {
+        jsonablePropertyRep = {'_fake_undefined': true};
+      } else {
+        var index = this._getObjectReferenceIndex(protoValue, propertyName);
+        if (index !== -1)
+          jsonablePropertyRep = this._objectReferences[index];
+        else
+          console.log('_replaceObjectsAndFunctions found proto without proxy ' + Object.getOwnPropertyNames(protoValue));
+      }
       if (recording_debug)
         console.log('_replaceObjectsAndFunctions ' + propertyName + ' jsonable ', jsonablePropertyRep);
       return jsonablePropertyRep;
