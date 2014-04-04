@@ -59,7 +59,7 @@ function FakeMaker() {
 
   this._proxyPropertyNamePath = [];
   this.exclusions = FakeCommon.chromeBuiltins.concat([
-    'Proxy', 'Reflect', 'FakeMaker', 'FakePlayer', 'location', 'webkitStorageInfo', '__F_',
+    'Proxy', 'Reflect', 'FakeMaker', 'FakePlayer', 'webkitStorageInfo', '__F_',
     ]);
   // DOM elements with id are also globals.
   var qs = window.document.querySelector.bind(window.document);
