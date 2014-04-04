@@ -1262,6 +1262,49 @@ tests['checkFireEvent'] = function() {
   });
 };
 
+var UndefinedProtoSrc = "(function() {var proto = HTMLElement.prototype;\n";
+UndefinedProtoSrc +=  "window.testUndefinedProto = 0;"
+UndefinedProtoSrc +=   "while(proto) {\n";
+UndefinedProtoSrc +=   "    proto = proto.__proto__;\n";
+UndefinedProtoSrc +=   "   window.testUndefinedProto++;\n"
+UndefinedProtoSrc +=   "}})();\n";
+
+tests['testUndefinedProto'] = function() {
+  var ourConsole = console;
+  var transcoded = transcode(UndefinedProtoSrc, 'testUndefinedProto.js');
+  console.log('transcoded: ' + transcoded);
+  var fakeMaker = new FakeMaker();
+  windowProxy = fakeMaker.makeFakeWindow();
+  eval(transcoded);
+
+  json.testUndefinedProto = fakeMaker.toJSON();
+
+  ourConsole.log('testUndefinedProto', JSON.parse(json.testUndefinedProto));
+  saveJsonData('testUndefinedProto', json);
+
+  dumpTrace('testUndefinedProto.js', transcoded);
+  return true;
+}
+
+tests['checkUndefinedProto'] = function() {
+  var transcoded = transcode(UndefinedProtoSrc, 'checkUndefinedProto.js');
+  console.log('transcoded: ' + transcoded);
+  restoreJsonData('testUndefinedProto', function(json) {
+    console.log('checkUndefinedProto playback data: ', json)
+    var fakePlayer = new FakePlayer(json);
+    window.windowProxy = fakePlayer.startingObject();
+    fakePlayer.initialize();
+    try {
+      var result = eval(transcoded);
+    } catch(e) {
+      console.error('FAILED ', e.stack || e);
+      dumpTrace('checkUndefinedProto.js', transcoded);
+    }
+    if (isSame(6, windowProxy.testUndefinedProto))
+          pass();
+  });
+};
+
 // For some reason the V8 proxy does not enumerate DOM properties correctly.
 PropertyEnumerationsrc = "(function() { for (var property in document.documentElement.style) {\n";
 PropertyEnumerationsrc += " if (property === 'zoom') window.testPropertyEnumeration = property;\n";
@@ -1330,7 +1373,7 @@ tests['testWebKitShadowRoot'] = function() {
   json.testWebKitShadowRoot = fakeMaker.toJSON();
 
   ourConsole.log('testWebKitShadowRoot', JSON.parse(json.testWebKitShadowRoot));
-  saveJsonData('testDefinePropertyPointerEnabled', json);
+  saveJsonData('testWebKitShadowRoot', json);
   return true;
 }
 
