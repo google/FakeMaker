@@ -1058,12 +1058,12 @@ FakeMaker.prototype = {
 
     if (descriptor && !descriptor.get && !descriptor.set) {
       var value = descriptor.value;
-      if (typeof value !== 'object' && typeof value !== 'function') {
-         jsonablePropertyRep = 1; // a value, use getter to recording.
-       } else {
+      if (value && (typeof value === 'object' || typeof value === 'function')) {
         var index = this._getObjectReferenceIndex(value, propertyName);
         if (index !== -1)
           jsonablePropertyRep = this._objectReferences[index];
+       } else {
+        jsonablePropertyRep = 1; // a value, use getter to recording.
       }
     }
     if (recording_debug)
