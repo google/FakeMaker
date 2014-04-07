@@ -1305,7 +1305,67 @@ tests['checkUndefinedProto'] = function() {
   });
 };
 
-// For some reason the V8 proxy does not enumerate DOM properties correctly.
+var LifeCycleEventsSrc = "var LifeCyclePrototype = Object.create(HTMLElement.prototype, {"
+LifeCycleEventsSrc +=   "  createdCallback: {value: function() {\n";
+LifeCycleEventsSrc +=   "    window.testLifeCycleEvents = 'created ';\n";
+LifeCycleEventsSrc +=   "}},\n";
+LifeCycleEventsSrc +=   "  attachedCallback: { value: function() {\n";
+LifeCycleEventsSrc +=   "     window.testLifeCycleEvents += 'attached ';\n";
+LifeCycleEventsSrc +=   "  }},\n";
+LifeCycleEventsSrc +=   "  detachedCallback: { value: function() {\n";
+LifeCycleEventsSrc +=   "     window.testLifeCycleEvents += 'detached ';\n";
+LifeCycleEventsSrc +=   "  }},\n";
+LifeCycleEventsSrc +=   "  attributeChangedCallback: { value: function() {\n";
+LifeCycleEventsSrc +=   "     window.testLifeCycleEvents += 'attributeChanged ';\n";
+LifeCycleEventsSrc +=   "  }},\n";
+LifeCycleEventsSrc +=   "});\n";
+LifeCycleEventsSrc +=   "document.registerElement('polymer-element', {\n";
+LifeCycleEventsSrc +=   "  prototype: LifeCyclePrototype\n";
+LifeCycleEventsSrc +=   "});\n";
+LifeCycleEventsSrc +=   "var elt = document.querySelector('polymer-element');\n";
+LifeCycleEventsSrc +=   "var parent = elt.parentElement;\n";
+LifeCycleEventsSrc +=   "parent.removeChild(elt);\n";
+LifeCycleEventsSrc +=   "parent.appendChild(elt);\n";
+LifeCycleEventsSrc +=   "elt.setAttribute('honey', 'bunny');\n";
+LifeCycleEventsSrc +=   "console.log('window.testLifeCycleEvents: ' + window.testLifeCycleEvents);\n";
+
+
+tests['testLifeCycleEvents'] = function() {
+  var ourConsole = console;
+  var transcoded = transcode(LifeCycleEventsSrc, 'testLifeCycleEvents.js');
+  console.log('transcoded: ' + transcoded);
+  var fakeMaker = new FakeMaker();
+  windowProxy = fakeMaker.makeFakeWindow();
+  eval(transcoded);
+
+  json.testLifeCycleEvents = fakeMaker.toJSON();
+
+  ourConsole.log('testLifeCycleEvents', JSON.parse(json.testLifeCycleEvents));
+  saveJsonData('testLifeCycleEvents', json);
+
+  dumpTrace('testLifeCycleEvents.js', transcoded);
+  return true;
+}
+
+tests['checkLifeCycleEvents'] = function() {
+  var transcoded = transcode(LifeCycleEventsSrc, 'checkLifeCycleEvents.js');
+  console.log('transcoded: ' + transcoded);
+  restoreJsonData('testLifeCycleEvents', function(json) {
+    console.log('checkLifeCycleEvents playback data: ', json)
+    var fakePlayer = new FakePlayer(json);
+    window.windowProxy = fakePlayer.startingObject();
+    fakePlayer.initialize();
+    try {
+      var result = eval(transcoded);
+    } catch(e) {
+      console.error('FAILED ', e.stack || e);
+      dumpTrace('checkLifeCycleEvents.js', transcoded);
+    }
+    if (isSame('created attached detached attached attributeChanged ', windowProxy.testLifeCycleEvents))
+          pass();
+  });
+};
+
 PropertyEnumerationsrc = "(function() { for (var property in document.documentElement.style) {\n";
 PropertyEnumerationsrc += " if (property === 'zoom') window.testPropertyEnumeration = property;\n";
 PropertyEnumerationsrc += " }})();\n";

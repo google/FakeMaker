@@ -20,6 +20,6 @@ var FakeCommon = {
   nonDOM: ['addEventListener', 'setTimeout'],
 
   //  Wrap the callback functions passed into the DOM functions but de-proxy other args.
-  lifeCycleOperations: ['createdCallback', 'enteredViewCallback', 'leftViewCallback', 'attributeChangedCallback'],
+  lifeCycleOperations: ['createdCallback', 'attachedCallback', 'detachedCallback', 'attributeChangedCallback'],
 };
 

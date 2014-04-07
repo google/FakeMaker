@@ -7,7 +7,7 @@
 
 (function(global){
 
-var debug_player = false;
+var debug_player = true;
 
 function FakePlayer(json) {
   var fromJSON;
@@ -138,7 +138,7 @@ FakePlayer.prototype = {
   checkSync: function(path) {
     var traceIndex = parseInt(path.split(' ').pop(), 10);
     if (__F_.calls.length - 1 !== traceIndex)
-      throw new Error('FakePlayer out of sync with FakeMaker at ' + path + ' vs ' + (__F_.calls.length - 1));
+      throw new Error('Out of sync, FakeMaker at ' + path + ' vs FakePlayer: ' + (__F_.calls.length - 1));
   },
 
   checkForEvent: function(reply, path) {
@@ -205,24 +205,36 @@ FakePlayer.prototype = {
       });
   },
 
-  copyProtoChainToArray: function(obj, path) {
-    var protoChainArray = [];
-    this._someProtos(obj, function(fromProto) {
-      if (fromProto === Object.prototype)
-        return true;
-      var toProto = {};
-      this.copyOwnProperties(fromProto, toProto);
-      protoChainArray.push(toProto);
-    }.bind(this), path);
-    return protoChainArray;
+  createFakeCustomElement: function(element, prototype) {
+    var fakePlayer = this;
+    // element has recording info, prototype has app-defined JS functions.
+    // Our fake custom element needs the recording info except when there are JS function.
+    this._someProtos(prototype, function(proto) {
+      if (element.__proto__ === Object.prototype) {
+        // To avoid walking on Object.prototype, insert another layer.
+        element.__proto__ = {};
+      }
+      // Write the app-defined JS functions onto the recording object proto.
+      fakePlayer.copyOwnProperties(proto, element.__proto__);
+    }, 'createFakeCustomElement');
+    element.__fakeCustomElement = true;
+    return element;
   },
 
-  setProtoChain: function(obj, protoChainArray) {
-      protoChainArray.reduce(function(obj, proto) {
-        Object.setPrototypeOf(obj, proto);
-        return proto;
-      }, obj);
-      return obj;
+  getOrCreateFakeCustomElement: function(element, prototype) {
+    if (element.__fakeCustomElement)
+      return element;
+
+    return this.createFakeCustomElement(element, prototype);
+  },
+
+  createLifeCycleWrapper: function(prototype, name) {
+    var fakePlayer = this;
+    return function lifeCycleWrapper()  {
+      var fakeCustomElement = fakePlayer.getOrCreateFakeCustomElement(this, prototype);
+      // complete the callback using the newly faked CustomElement.
+      prototype[name].apply(fakeCustomElement, []);
+    }
   },
 
   checkForCallback: function(name, args) {
@@ -232,23 +244,13 @@ FakePlayer.prototype = {
         console.log('checkForCallback found ' + name);
       var options = args[1];  // a ref to an object created by JS
       if (options && options.prototype) { // then JS code provided some functions for registerElement.
-        // Rearrange the input.
-        var protoChainArray = this.copyProtoChainToArray(options.prototype);
-        var prototype = protoChainArray.shift();
-        this.setProtoChain(prototype, protoChainArray);
         var createdCallback;
-        if ('createdCallback' in options.prototype) {
-          function lifeCycleWrapper()  {
-            var fakeCustomElement = Object.create(options.prototype);
-            // 'this' is a fake HTMLElement, it may have existing replay functions.
-            fakePlayer.copyOwnProperties(this, fakeCustomElement);
-            // complete the callback using the newly faked CustomElement.
-            options.prototype.createdCallback.apply(fakeCustomElement, []);
+        FakeCommon.lifeCycleOperations.forEach(function(name) {
+          if (name in options.prototype) {
+            var lifeCycleWrapper = fakePlayer.createLifeCycleWrapper(options.prototype, name)
+            fakePlayer.callbacks.push(lifeCycleWrapper);
           }
-          this.callbacks.push(lifeCycleWrapper);
-        } else {
-          throw new Error('registerElement options.prototype has no createdCallback');
-        }
+        });
       }
     } else {
       for(var i = 0; i < args.length; i++) {
