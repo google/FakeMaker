@@ -606,7 +606,7 @@ FakeMaker.prototype = {
         console.log('_getFromPropertyDescriptor ' + name + ': undefined ' + path);
     } else if (descriptor.get || this.treatAsGetter(name, path)) {
       this.stopRecording(path);
-      var value = Reflect.get(ownsName, name, receiver);
+      var value = Reflect.get(ownsName, name, obj);
       this.startRecording(path);
       result = this._wrapCallResult(value, ownsName, path + '.' + name);
       if (this.treatAsGetter(name, path)) {
