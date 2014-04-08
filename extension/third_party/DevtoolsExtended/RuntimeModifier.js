@@ -44,6 +44,10 @@
       this._injectedScript = scriptString;
     },
 
+    get injectedScript() {
+      return this._injectedScript;
+    },
+
     set preprocessingScript(scriptString) {
       console.assert(typeof scriptString === 'string');
       this._preprocessingScript = scriptString;
@@ -86,7 +90,7 @@
       } else {
         if (injectedScript !== this._injectedScript || preprocessingScript !== this._preprocessingScript) {
           this._active = false;
-          DevtoolsExtended.InspectedWindow.onRuntimeChanged.removeListener(this._onRuntimeChanged);      
+          DevtoolsExtended.InspectedWindow.onRuntimeChanged.removeListener(this._onRuntimeChanged);
         }  // else we are still in charge
       }
       if (this._active !== active)

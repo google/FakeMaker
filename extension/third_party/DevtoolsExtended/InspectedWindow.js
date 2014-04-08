@@ -89,7 +89,7 @@
       } else {
         if (this._runtimeInstalled)  // force our runtime back, maybe annoying to user?
           this._reloadRuntime();
-        else 
+        else
           this._checkRuntimeInstalled();
       }
 

@@ -12,7 +12,13 @@
   });
 
   function TraceFunctionsStatus(name, injectTracer, tracerCompiler) {
-    DevtoolsExtended.RuntimeStatus.call(this, name, injectTracer, tracerCompiler);
+    this.rawTranscoderSource = tracerCompiler;
+    this._transcodeOptions = {
+      noTracing: false,
+      noEncodeSource: false,
+      noSourceURL: false,
+    }
+    DevtoolsExtended.RuntimeStatus.call(this, name, injectTracer, this.wrapCompiler(tracerCompiler));
   }
 
   TraceFunctionsStatus.prototype = {
@@ -24,6 +30,15 @@
 
     get pageHeight() {
       return "26px";
+    },
+
+    set transcodeOptions(options) {
+      this._transcodeOptions = options;
+      this.runtimeModifier.preprocessingScript = this.wrapCompiler(this.rawTranscoderSource, options);
+    },
+
+    get transcodeOptions() {
+      return this._transcodeOptions;
     },
 
     _onExtensionPaneShown: function(win) {
@@ -86,7 +101,27 @@
         };
         win.postMessage(JSON.stringify(messageObject), '*');
       }
+    },
+
+    wrapCompiler: function(src, options) {
+      var optionsSrc = '';
+      if (options) {
+        Object.getOwnPropertyNames(options).forEach(function(name) {
+          optionsSrc += 'window.transcode.' + name + ' = ' + String(options[name]) + ';\n';
+        });
+      }
+
+      var wrap = 'function preprocessor(src, url) {\n';
+      // Workaround preprocessing of iframes bug
+      // (function(){// .noTranscode
+      wrap += 'if (src && (src.lastIndexOf("(function(){// .noTranscode", 0) === 0)) return;\n';
+      wrap += 'if (window.transcode) return window.trancode;\n';
+      wrap += src;
+      wrap += optionsSrc;
+      wrap += '\nreturn window.transcode;\n}()';
+      return wrap;
     }
+
   };
 
   function FakeMakerStatus(injectFakeMaker, fakeMakerCompiler) {
@@ -100,6 +135,10 @@
   function FakePlayerStatus(fakePlayerSrc, windowProxySubstPreprocessor) {
     this._fakePlayerSrc = fakePlayerSrc;
     TraceFunctionsStatus.call(this, "FakePlayer", this._fakePlayerSrc, windowProxySubstPreprocessor);
+    this.transcodeOptions = {
+      noEncodeSource: true,
+      noSourceURL: true,
+    };
   }
 
   FakePlayerStatus.prototype = {
@@ -108,6 +147,43 @@
     obeyActivationRequest: function(shouldBeActive) {
       this.getRecord(shouldBeActive,
           DevtoolsExtended.RuntimeStatus.prototype.obeyActivationRequest.bind(this, shouldBeActive));
+    },
+
+    getSources: function(activating, callback) {
+      function addSourcesToInjection(result, isException) {
+        if (!result) {
+          console.log('No sources recorded, options: ', this.transcodeOptions);
+          return;
+        }
+        // result should be an array of {url, src} from fakeMakerCompiler.
+        var decodedSrcs = [this._runtimeModifier.injectedScript];
+        Object.getOwnPropertyNames(this.transcodeOptions).forEach(function(name) {
+          window.transcode[name] = this.transcodeOptions[name];
+        }.bind(this));
+        result.forEach(function(entry) {
+          var url = entry.url;
+          var src = window.atob(entry.src);
+          console.log('ready to transcode  ' + url, src);
+          decodedSrcs.push(transcode(src, url));
+        });
+        var sum = 0;
+        decodedSrcs.forEach(function(src, index) {
+          var length = src.length;
+          sum += length;
+          console.log(index + ' ' + length + ' ' + sum);
+        });
+        var playerFilename = 'http://localhost:7679/extension/output/readyToPlay.js';
+        putOneByXHR(playerFilename, decodedSrcs.join('\n'),
+          function() {
+            console.log('DONE, writing player to ' + playerFilename);
+          }, function(msg) {
+            console.error('FAILED, writing json to ' + playerFilename + ': ' + msg);
+          }
+        );
+        callback(activating);
+      }
+      chrome.devtools.inspectedWindow.eval('window.__F_srcs',
+          addSourcesToInjection.bind(this));
     },
 
     getRecord: function(activating, callback) {
@@ -120,8 +196,9 @@
         // Use double quotes here since our strings inside json have single
         // quotes so they can live inside of JSON's doubles.
         var record = 'window.__fakeMakerRecord = ' + result + ';\n';
-        this.runtimeModifier.injectedScript = record + this._fakePlayerSrc;
-        callback(activating);
+        this._runtimeModifier.injectedScript = record + this._fakePlayerSrc;
+
+        this.getSources(activating, callback);
 
         var jsonFilename = 'http://localhost:7679/extension/output/fakeMakerOutput.json';
         putOneByXHR(jsonFilename, result,
@@ -145,24 +222,12 @@
 
   window.TraceFunctionsStatus = TraceFunctionsStatus;
 
-  function wrapCompiler(compilerName, src) {
-      var wrap = 'function preprocessor(src, url) {\n';
-      // Workaround preprocessing of iframes bug
-      // (function(){// .noTranscode
-      wrap += 'if (src && (src.lastIndexOf("(function(){// .noTranscode", 0) === 0)) return;\n';
-      wrap += 'if (window.transcode) return window.trancode;\n';
-      wrap += src;
-      wrap += '\nreturn window.transcode;\n}()';
-      return wrap;
-  }
-
   loadByXHR(includes.concat(['lib/FakeMaker.js']), function(srcs) {
     var fakeMakerSrc = srcs.join('\n');
     var injectFakeMaker = fakeMakerSrc + "\n(" + applyFakeMaker + ")();";
     console.log('loading fakeMakerCompiler');
     loadByXHR(['compiled/fakeMakerCompiler.js'], function(fakeMakerCompiler) {
-      var wrap = wrapCompiler('fakeMakerCompiler', fakeMakerCompiler);
-      var fakeMakerStatus = new FakeMakerStatus(injectFakeMaker, wrap);
+      var fakeMakerStatus = new FakeMakerStatus(injectFakeMaker, fakeMakerCompiler);
     });
   });
 
@@ -170,8 +235,7 @@
     var tracerInjectionSrc = tracerInjectionSrcs.join('\n');
     loadByXHR(['compiled/traceFunctionsPreprocessor.js'], function(tracerCompilerSrcs) {
       var tracerCompilerSrc = tracerCompilerSrcs.join('\n');
-      var wrap = wrapCompiler('tracerCompiler', tracerCompilerSrc);
-      var TraceFunctionsStatus = new window.TraceFunctionsStatus('Tracer', tracerInjectionSrc, wrap);
+      var TraceFunctionsStatus = new window.TraceFunctionsStatus('Tracer', tracerInjectionSrc, tracerCompilerSrc);
     });
   });
 
@@ -179,8 +243,7 @@
       var fakePlayerSrc = srcs.join('\n');
       var injectFakePlayer = fakePlayerSrc + "\n(" + applyFakePlayer + ")();";
       loadByXHR(['compiled/fakeMakerCompiler.js'], function(fakeMakerCompiler) {
-        var wrap = wrapCompiler('fakeMakerCompiler', fakeMakerCompiler);
-        var fakeMakerStatus = new FakePlayerStatus(injectFakePlayer, wrap);
+        var fakeMakerStatus = new FakePlayerStatus(injectFakePlayer, fakeMakerCompiler);
       });
   });
 

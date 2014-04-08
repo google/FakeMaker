@@ -22,14 +22,24 @@ window.transcode = function transcode(src, url, fncName) {
     var globalScope = ScopeAttacher.attachScopes(reporter, tree, global);
     var prefixGlobalsWithWindowProxy = new AttachWindowProxyToGlobalsTransformer();
     var resultTree = prefixGlobalsWithWindowProxy.transformAny(tree);
-    if (true || window.__F_tracing) {
+    if (!window.transcode.noTracing) {
         var tracer = new TraceFunctionsTransformer(url);
         resultTree = tracer.transformAny(resultTree);
     }
     var outURL = fileRenamer(url);
-    var srcURL = '\n//# sourceURL=' + outURL + '\n';
-    var result = TreeWriter.write(resultTree, {}) + srcURL;
-    var resultFile = new SourceFile(outURL, result);
-    //console.log('transcoded ' + url + ' to ' + outURL);
+    var encodedSrc = '';
+    if (!window.transcode.noEncodeSource) {
+        encodedSrc += 'window.__F_srcs = window.__F_srcs || [];';
+        encodedSrc += 'window.__F_srcs.push({url: \"' + url + '\", src: \"' +window.btoa(src) + '\"});\n';
+    }
+    var optionsInfo = '//';
+    optionsInfo += ' noTracing: ' + window.transcode.noTracing;
+    optionsInfo += ' noEncodeSource: ' + window.transcode.noEncodeSource;
+    optionsInfo += ' noSourceURL: ' + window.transcode.noSourceURL;
+    var srcURL = '';
+    if (!window.transcode.noSourceURL) {
+        srcURL += '\n//# sourceURL=' + outURL + '\n';
+    }
+    var result = TreeWriter.write(resultTree, {}) + encodedSrc + optionsInfo + srcURL;
     return result;
 }
