@@ -1458,7 +1458,12 @@ tests['testDetectEval'] = function() {
   return isSame(true, fakePlayer.endOfRecording()) && json;
  };
 
- var CurrentScriptSrc = "(function() {window.testCurrentScript = document.currentScript;\n";
+var CurrentScriptSrc = "(function() {window.testCurrentScript = document.currentScript;\n";
+CurrentScriptSrc +=   "var aScript = document.createElement('script');\n";
+CurrentScriptSrc +=   "aScript.textContent = 'windowProxy.testCurrentScript = windowProxy.document.currentScript;\\n'; \n";
+CurrentScriptSrc +=   "aScript.textContent += 'console.log(\"testCurrentScript: \" + window.testCurrentScript);';\n"
+CurrentScriptSrc +=   "document.documentElement.appendChild(aScript);\n";
+CurrentScriptSrc +=   "console.log('window.testCurrentScript: '+window.testCurrentScript);\n";
 CurrentScriptSrc +=   "})();\n";
 
 tests['testCurrentScript'] = function() {
@@ -1492,7 +1497,49 @@ tests['checkCurrentScript'] = function() {
       console.error('FAILED ', e.stack || e);
       dumpTrace('checkCurrentScript.js', transcoded);
     }
-    if (isSame(null, windowProxy.testCurrentScript))
+    if (isSame("[object HTMLScriptElement]", windowProxy.testCurrentScript+''))
+          pass();
+  });
+};
+
+var MutableObjectValueSrc = "(function() {\n";
+MutableObjectValueSrc += "window.testMutableObjectValue = document.documentElement.children.length;\n";
+MutableObjectValueSrc += "document.documentElement.appendChild(document.createElement('button'));\n";
+MutableObjectValueSrc += "window.testMutableObjectValue = document.documentElement.children.length;\n";
+MutableObjectValueSrc +=   "})();\n";
+
+tests['testMutableObjectValue'] = function() {
+  var ourConsole = console;
+  var transcoded = transcode(MutableObjectValueSrc, 'testMutableObjectValue.js');
+  console.log('transcoded: ' + transcoded);
+  var fakeMaker = new FakeMaker();
+  windowProxy = fakeMaker.makeFakeWindow();
+  eval(transcoded);
+
+  json.testMutableObjectValue = fakeMaker.toJSON();
+
+  ourConsole.log('testMutableObjectValue', JSON.parse(json.testMutableObjectValue));
+  saveJsonData('testMutableObjectValue', json);
+
+  dumpTrace('testMutableObjectValue.js', transcoded);
+  return true;
+}
+
+tests['checkMutableObjectValue'] = function() {
+  var transcoded = transcode(MutableObjectValueSrc, 'checkMutableObjectValue.js');
+  console.log('transcoded: ' + transcoded);
+  restoreJsonData('testMutableObjectValue', function(json) {
+    console.log('checkMutableObjectValue playback data: ', json)
+    var fakePlayer = new FakePlayer(json);
+    window.windowProxy = fakePlayer.startingObject();
+    fakePlayer.initialize();
+    try {
+      var result = eval(transcoded);
+    } catch(e) {
+      console.error('FAILED ', e.stack || e);
+      dumpTrace('checkMutableObjectValue.js', transcoded);
+    }
+    if (isSame(3, windowProxy.testMutableObjectValue))
           pass();
   });
 };

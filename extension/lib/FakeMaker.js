@@ -8,7 +8,7 @@
 
 (function(){
 
-var _debug = false;
+var _debug = true;
 var maker_debug = _debug;
 var expando_debug = _debug;
 var accesses_debug = _debug;
@@ -394,7 +394,6 @@ FakeMaker.prototype = {
     return this._proxyObject(value, theThis, path);
   },
 
-  // helper for proxy apply and construct
   _wrapCallResult: function(returnValue, theThis, path) {
       var result = this._wrapReturnValue(returnValue, theThis, path);
       if (this.isAProxy(result)) { // Then we did not record the return value, record its ref.
@@ -592,21 +591,38 @@ FakeMaker.prototype = {
       return descriptor;
   },
 
-  _getFromPropertyDescriptor: function(target, name, receiver, descriptor, ownsName, path) {
+  treatAsGetter: function(name, path) {
+    if (get_set_debug)
+      console.log('treatAsGetter ' + name + ' at ' + path);
+    if (name === 'currentScript' && path.indexOf('document') !== -1)
+      return true;
+  },
+
+  _getFromPropertyDescriptor: function(obj, target, name, receiver, descriptor, ownsName, path) {
     var result;
     if (!descriptor) {
       result = this._wrapReturnValue(undefined, undefined, path + '.' + name);
       if (get_set_debug)
         console.log('_getFromPropertyDescriptor ' + name + ': undefined ' + path);
-    } else if (descriptor.get) {
+    } else if (descriptor.get || this.treatAsGetter(name, path)) {
       this.stopRecording(path);
       var value = Reflect.get(ownsName, name, receiver);
       this.startRecording(path);
-      result = this._wrapReturnValue(value, ownsName, path + '.' + name);
+      result = this._wrapCallResult(value, ownsName, path + '.' + name);
+      if (this.treatAsGetter(name, path)) {
+        var index = this._objectsReferenced.indexOf(obj);
+        if (index === -1)
+          throw new Error('_getFromPropertyDescriptor no object reference for ' + path);
+        var ref = this._objectReferences[index];
+        ref.treatedAsGetter = ref.treatedAsGetter || {};
+        ref.treatedAsGetter[name] = true;
+        if (get_set_debug)
+          console.log('_getFromPropertyDescriptor treatedAsGetter ' + name + ' at ' + path);
+      }
       if (get_set_debug)
         console.log('get from getter ' + name+ ' {' + typeof result + '}' + path);
     } else if (this.isAProxy(descriptor.value)) {
-      // Only objects and fucntions have proxies, so property is one of those.
+      // Only objects and functions have proxies, so property is one of those.
       // The object graph will handle playback, just ref it.
       var indexOfObj = this._proxiesOfObjects.indexOf(descriptor.value);
       var proxiedObj = this._proxiedObjects[indexOfObj];
@@ -681,6 +697,7 @@ FakeMaker.prototype = {
 
       // target[name] or getter
       get: function(target, name, receiver) { // target is bound to the shadow object
+        debugAll(name === 'currentScript');
         if (typeof obj === 'function' && name === 'name')
           throw new Error('get typeof function name === \'name\'');
         // Secret property name for debugging
@@ -726,7 +743,7 @@ FakeMaker.prototype = {
 
         if (get_set_debug) console.log('get descriptor ' + name, descriptor);
 
-        var result = fakeMaker._getFromPropertyDescriptor(target, name, receiver, descriptor, ownsName, path);
+        var result = fakeMaker._getFromPropertyDescriptor(obj, target, name, receiver, descriptor, ownsName, path);
 
         // '.apply()' will need to process some functions for callbacks before they go into the DOM. But it does not
         // know the name of the function it will call. So we check the name here and mark the shadow/target for apply
@@ -1031,6 +1048,7 @@ FakeMaker.prototype = {
   // FakePlayer can reconstitute the property.
 
   _replaceObjectsAndFunctions: function(obj, propertyName) {
+    debugAll(propertyName === 'currentScript');
     var jsonablePropertyRep = {};
     if (propertyName === '__proto__') {
       var protoValue = Object.getPrototypeOf(obj);
@@ -1058,10 +1076,13 @@ FakeMaker.prototype = {
 
     if (descriptor && !descriptor.get && !descriptor.set) {
       var value = descriptor.value;
-      if (value && (typeof value === 'object' || typeof value === 'function')) {
-        var index = this._getObjectReferenceIndex(value, propertyName);
+      var index = this._getObjectReferenceIndex(value, propertyName);
+      var ref = this._objectReferences[index]
+      if (index !== -1 && ref.treatedAsGetter && ref.treatedAsGetter[propertyName]) {
+        jsonablePropertyRep._fake_getter_ = true;
+      } else if (value && (typeof value === 'object' || typeof value === 'function')) {
         if (index !== -1)
-          jsonablePropertyRep = this._objectReferences[index];
+          jsonablePropertyRep = ref;
        } else {
         jsonablePropertyRep = 1; // a value, use getter to recording.
       }
