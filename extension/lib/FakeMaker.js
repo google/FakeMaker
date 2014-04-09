@@ -8,7 +8,7 @@
 
 (function(){
 
-var _debug = true;
+var _debug = false;
 var maker_debug = _debug;
 var expando_debug = _debug;
 var accesses_debug = _debug;
@@ -697,7 +697,6 @@ FakeMaker.prototype = {
 
       // target[name] or getter
       get: function(target, name, receiver) { // target is bound to the shadow object
-        debugAll(name === 'currentScript');
         if (typeof obj === 'function' && name === 'name')
           throw new Error('get typeof function name === \'name\'');
         // Secret property name for debugging
@@ -957,6 +956,14 @@ FakeMaker.prototype = {
     // Accumulate the property names on the original object before registering
     // our new object as proxied.
     var originalProperties = [];
+    var attributesName = '.attributes';
+    if (path.indexOf(attributesName, path.length - attributesName.length) !== -1 && obj.getNamedItem) {
+      for (var i = 0; i < obj.length; i++)
+        originalProperties.push(obj[i].nodeName);
+      if (maker_debug)
+        console.log(attributesName + ' found ', originalProperties)
+    }
+
     fakeMaker._someProtos(obj, function(proto) {
       if (fakeMaker._expandoPrototypes.indexOf(proto) !== -1) {
         if (maker_debug)
@@ -964,8 +971,6 @@ FakeMaker.prototype = {
         return;
       }
       originalProperties = originalProperties.concat(Object.getOwnPropertyNames(proto));
-      if (originalProperties.indexOf('init') !== -1)
-        console.error('oops init ' + proto.init)
     }, path);
 
     var indexOfProxy = this._registerProxyObject(obj, theThis, proxy);
@@ -1048,7 +1053,6 @@ FakeMaker.prototype = {
   // FakePlayer can reconstitute the property.
 
   _replaceObjectsAndFunctions: function(obj, propertyName) {
-    debugAll(propertyName === 'currentScript');
     var jsonablePropertyRep = {};
     if (propertyName === '__proto__') {
       var protoValue = Object.getPrototypeOf(obj);

@@ -1,21 +1,6 @@
 <script name="testCurrentScript">
 (function() {
   var script = document.currentScript;
-  var attrs = [];
-  for (var p in script.attributes)
-    attrs.push(p);
-
-  console.log('for in ', attrs);
-
-  console.log('just in ', 'src' in script.attributes);
-
-  console.log('Object.getOwnPropertyNames', Object.getOwnPropertyNames(script.attributes));
-  console.log('Via 0', script.attributes[0]);
-
-  console.log('but ', script.attributes.name);
-
-  window.testCurrentScript = document.currentScript;
-  window.testCurrentScript = window.document.currentScript;
-  console.log('testCurrentScript: ' + window.testCurrentScript);
+  window.testCurrentScript = script.attributes.name.length;
 })();
 </script>
