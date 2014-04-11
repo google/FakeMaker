@@ -137,8 +137,34 @@ FakePlayer.prototype = {
 
   checkSync: function(path) {
     var traceIndex = parseInt(path.split(' ').pop(), 10);
-    if (__F_.calls.length - 1 !== traceIndex)
-      throw new Error('Out of sync, FakeMaker at ' + path + ' vs FakePlayer: ' + (__F_.calls.length - 1));
+    if (__F_.calls.length - 1 !== traceIndex) {
+      var splits = path.split(' ');
+      var encodedOffset = splits[splits.length - 2]
+      var offset;
+      var direction;
+      switch (encodedOffset.indexOf('0x')) {
+        case -1:
+          var decimal = parseInt(encodedOffset, 10);
+          if (decimal < 0) {
+            direction = 'exit';
+            offset = -decimal;
+          } else {
+            direction = 'enter';
+            offset = decimal;
+          }
+          break;
+        case 0:
+          direction = 'src';
+          offset = parseInt(encodedOffset, 16);
+        case 1:
+          direction = 'call';
+          offset = -parseInt(encodedOffset, 16);
+          break;
+        default:
+          break;
+      }
+      throw new Error('Out of sync, FakeMaker at ' + path + ' vs FakePlayer: ' + (__F_.calls.length - 1) + ' at ' + offset + '  ' + direction);
+    }
   },
 
   checkForEvent: function(reply, path) {
