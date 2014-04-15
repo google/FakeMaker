@@ -1,6 +1,10 @@
 <script name="testCurrentScript">
+var expected = 'testCurrentScript';
 (function() {
   var script = document.currentScript;
-  window.testCurrentScript = script.attributes.name.length;
+  window.testCurrentScript = script.attributes.name.value;
+  if (window.testCurrentScript !== expected)
+    throw new Error('Fail');
+  console.log('Pass');
 })();
 </script>

@@ -1458,50 +1458,6 @@ tests['testDetectEval'] = function() {
   return isSame(true, fakePlayer.endOfRecording()) && json;
  };
 
-var CurrentScriptSrc = "(function() {window.testCurrentScript = document.currentScript;\n";
-CurrentScriptSrc +=   "var aScript = document.createElement('script');\n";
-CurrentScriptSrc +=   "aScript.textContent = 'windowProxy.testCurrentScript = windowProxy.document.currentScript;\\n'; \n";
-CurrentScriptSrc +=   "aScript.textContent += 'console.log(\"testCurrentScript: \" + window.testCurrentScript);';\n"
-CurrentScriptSrc +=   "document.documentElement.appendChild(aScript);\n";
-CurrentScriptSrc +=   "console.log('window.testCurrentScript: '+window.testCurrentScript);\n";
-CurrentScriptSrc +=   "})();\n";
-
-tests['testCurrentScript'] = function() {
-  var ourConsole = console;
-  var transcoded = transcode(CurrentScriptSrc, 'testCurrentScript.js');
-  console.log('transcoded: ' + transcoded);
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval(transcoded);
-
-  json.testCurrentScript = fakeMaker.toJSON();
-
-  ourConsole.log('testCurrentScript', JSON.parse(json.testCurrentScript));
-  saveJsonData('testCurrentScript', json);
-
-  dumpTrace('testCurrentScript.js', transcoded);
-  return true;
-}
-
-tests['checkCurrentScript'] = function() {
-  var transcoded = transcode(CurrentScriptSrc, 'checkCurrentScript.js');
-  console.log('transcoded: ' + transcoded);
-  restoreJsonData('testCurrentScript', function(json) {
-    console.log('checkCurrentScript playback data: ', json)
-    var fakePlayer = new FakePlayer(json);
-    window.windowProxy = fakePlayer.startingObject();
-    fakePlayer.initialize();
-    try {
-      var result = eval(transcoded);
-    } catch(e) {
-      console.error('FAILED ', e.stack || e);
-      dumpTrace('checkCurrentScript.js', transcoded);
-    }
-    if (isSame("[object HTMLScriptElement]", windowProxy.testCurrentScript+''))
-          pass();
-  });
-};
-
 var MutableObjectValueSrc = "(function() {\n";
 MutableObjectValueSrc += "window.testMutableObjectValue = document.documentElement.children.length;\n";
 MutableObjectValueSrc += "document.documentElement.appendChild(document.createElement('button'));\n";
@@ -1540,6 +1496,49 @@ tests['checkMutableObjectValue'] = function() {
       dumpTrace('checkMutableObjectValue.js', transcoded);
     }
     if (isSame(3, windowProxy.testMutableObjectValue))
+          pass();
+  });
+};
+
+var DomPrototypeAddSrc = "(function() {\n";
+DomPrototypeAddSrc += "var add = DOMTokenList.prototype.add;\n";
+DomPrototypeAddSrc += "DOMTokenList.prototype.add = function() {;\n";
+DomPrototypeAddSrc += "    add.call(this, arguments[0]);\n";
+DomPrototypeAddSrc += "  };\n";
+DomPrototypeAddSrc += "})();\n";
+
+tests['testDomPrototypeAdd'] = function() {
+  var ourConsole = console;
+  var transcoded = transcode(DomPrototypeAddSrc, 'testDomPrototypeAdd.js');
+  console.log('transcoded: ' + transcoded);
+  var fakeMaker = new FakeMaker();
+  windowProxy = fakeMaker.makeFakeWindow();
+  eval(transcoded);
+
+  json.testDomPrototypeAdd = fakeMaker.toJSON();
+
+  ourConsole.log('testDomPrototypeAdd', JSON.parse(json.testDomPrototypeAdd));
+  saveJsonData('testDomPrototypeAdd', json);
+
+  dumpTrace('testDomPrototypeAdd.js', transcoded);
+  return true;
+}
+
+tests['checkDomPrototypeAdd'] = function() {
+  var transcoded = transcode(DomPrototypeAddSrc, 'checkDomPrototypeAdd.js');
+  console.log('transcoded: ' + transcoded);
+  restoreJsonData('testDomPrototypeAdd', function(json) {
+    console.log('checkDomPrototypeAdd playback data: ', json)
+    var fakePlayer = new FakePlayer(json);
+    window.windowProxy = fakePlayer.startingObject();
+    fakePlayer.initialize();
+    try {
+      var result = eval(transcoded);
+    } catch(e) {
+      console.error('FAILED ', e.stack || e);
+      dumpTrace('checkDomPrototypeAdd.js', transcoded);
+    }
+    if (isSame('function', windowProxy.testDomPrototypeAdd))
           pass();
   });
 };
