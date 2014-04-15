@@ -44,20 +44,20 @@ class CodeUnit {
    */
   constructor(loaderHooks, normalizedName, type, state,
       name, referrerName, address) {
-    this.loaderHooks = loaderHooks;
-    this.normalizedName = normalizedName;
-    this.type = type;
-    this.name_ = name;
-    this.referrerName_ = referrerName;
-    this.address_ = address;
-    this.url = InternalLoader.uniqueName(normalizedName, address);
-    this.uid = getUid();
-    this.state_ = state || NOT_STARTED;
-    this.error = null;
-    this.result = null;
-    this.data_ = {};
-    this.dependencies = [];
     this.promise = new Promise((res, rej) => {
+      this.loaderHooks = loaderHooks;
+      this.normalizedName = normalizedName;
+      this.type = type;
+      this.name_ = name;
+      this.referrerName_ = referrerName;
+      this.address_ = address;
+      this.url = InternalLoader.uniqueName(normalizedName, address);
+      this.uid = getUid();
+      this.state_ = state || NOT_STARTED;
+      this.error = null;
+      this.result = null;
+      this.data_ = {};
+      this.dependencies = [];
       this.resolve = res;
       this.reject = rej;
     });
@@ -238,9 +238,14 @@ export class InternalLoader {
         this.handleCodeUnitLoaded(codeUnit);
         return codeUnit;
       }).catch((err) => {
-        codeUnit.state = ERROR;
-        codeUnit.abort = function() {};
-        this.handleCodeUnitLoadError(codeUnit);
+        try {
+          codeUnit.state = ERROR;
+          codeUnit.abort = function() {};
+          codeUnit.err = err;
+          this.handleCodeUnitLoadError(codeUnit);
+        } catch (ex) {
+          console.error('Internal Error ' + (ex.stack || ex));
+        }
       });
     }
 
@@ -371,8 +376,9 @@ export class InternalLoader {
    * @param {CodeUnit} codeUnit
    */
   handleCodeUnitLoadError(codeUnit) {
-    var message = `Failed to load '${codeUnit.address}'.\n` +
-        codeUnit.nameTrace() + this.loaderHooks.nameTrace(codeUnit);
+    var message = codeUnit.err ? String(codeUnit.err) + '\n' :
+        `Failed to load '${codeUnit.address}'.\n`;
+    message += codeUnit.nameTrace() + this.loaderHooks.nameTrace(codeUnit);
 
     this.reporter.reportError(null, message);
     this.abortAll(message);

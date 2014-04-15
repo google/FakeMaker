@@ -32,8 +32,12 @@
   var $getOwnPropertyDescriptor = $Object.getOwnPropertyDescriptor;
   var $getOwnPropertyNames = $Object.getOwnPropertyNames;
   var $getPrototypeOf = $Object.getPrototypeOf;
+  var $keys = $Object.keys;
   var $hasOwnProperty = $Object.prototype.hasOwnProperty;
   var $toString = $Object.prototype.toString;
+  var $preventExtensions = Object.preventExtensions;
+  var $seal = Object.seal;
+  var $isExtensible = Object.isExtensible;
 
   function nonEnum(value) {
     return {
@@ -143,7 +147,7 @@
     $defineProperty(this, symbolDataProperty, {value: this});
     $defineProperty(this, symbolInternalProperty, {value: key});
     $defineProperty(this, symbolDescriptionProperty, {value: description});
-    $freeze(this);
+    freeze(this);
     symbolValues[key] = this;
   }
   $defineProperty(SymbolValue.prototype, 'constructor', nonEnum(Symbol));
@@ -155,10 +159,61 @@
     value: Symbol.prototype.valueOf,
     enumerable: false
   });
-  $freeze(SymbolValue.prototype);
+  
+
+  var hashProperty = newUniqueString();
+  
+  // cached objects to avoid allocation of new object in defineHashObject
+  var hashPropertyDescriptor = { 
+    value: undefined
+  };
+  var hashObjectProperties = {
+    hash: {
+      value: undefined
+    },
+    self: {
+      value: undefined
+    }
+  };
+  
+  var hashCounter = 0;
+  function getOwnHashObject(object) {
+    var hashObject = object[hashProperty];
+    // Make sure we got the own property
+    if (hashObject && hashObject.self === object) 
+      return hashObject;
+    
+    if ($isExtensible(object)) {
+      hashObjectProperties.hash.value = hashCounter++;
+      hashObjectProperties.self.value = object;
+
+      hashPropertyDescriptor.value = $create(null, hashObjectProperties);
+          
+      $defineProperty(object, hashProperty, hashPropertyDescriptor);
+      return hashPropertyDescriptor.value;
+    }
+    
+    return undefined;
+  }
+  
+  function freeze(object) {
+    getOwnHashObject(object);
+    return $freeze.apply(this, arguments);
+  }
+  
+  function preventExtensions(object) {
+    getOwnHashObject(object);
+    return $preventExtensions.apply(this, arguments);
+  }
+
+  function seal(object) {
+    getOwnHashObject(object);
+    return $seal.apply(this, arguments);
+  }
 
   Symbol.iterator = Symbol();
-
+  freeze(SymbolValue.prototype);
+  
   function toProperty(name) {
     if (isSymbol(name))
       return name[symbolInternalProperty];
@@ -171,7 +226,7 @@
     var names = $getOwnPropertyNames(object);
     for (var i = 0; i < names.length; i++) {
       var name = names[i];
-      if (!symbolValues[name])
+      if (!symbolValues[name] && name !== hashProperty)
         rv.push(name);
     }
     return rv;
@@ -239,6 +294,12 @@
                     {value: getOwnPropertyDescriptor});
     $defineProperty(Object.prototype, 'hasOwnProperty',
                     {value: hasOwnProperty});
+    $defineProperty(Object, 'freeze',
+                    {value: freeze});
+    $defineProperty(Object, 'preventExtensions',
+                    {value: preventExtensions});
+    $defineProperty(Object, 'seal',
+                    {value: seal});
 
     Object.getOwnPropertySymbols = getOwnPropertySymbols;
 
@@ -254,11 +315,17 @@
     $defineProperty(Object, 'is', method(is));
 
     // Object.assign (19.1.3.1)
-    function assign(target, source) {
-      var props = $getOwnPropertyNames(source);
-      var p, length = props.length;
-      for (p = 0; p < length; p++) {
-        target[props[p]] = source[props[p]];
+    function assign(target) {
+      for (var i = 1; i < arguments.length; i++) {
+        var source = arguments[i];
+        var props = $keys(source);
+        var p, length = props.length;
+        for (p = 0; p < length; p++) {
+          var name = props[p];
+          if (name === hashProperty)
+            continue;
+          target[name] = source[name];
+        }
       }
       return target;
     }
@@ -270,6 +337,9 @@
       var props = $getOwnPropertyNames(source);
       var p, descriptor, length = props.length;
       for (p = 0; p < length; p++) {
+        var name = props[p];
+        if (name === hashProperty)
+          continue;
         descriptor = $getOwnPropertyDescriptor(source, props[p]);
         $defineProperty(target, props[p], descriptor);
       }
@@ -283,6 +353,9 @@
     for (var i = 1; i < arguments.length; i++) {
       var names = $getOwnPropertyNames(arguments[i]);
       for (var j = 0; j < names.length; j++) {
+        var name = names[j];
+        if (name === hashProperty)
+          continue;
         (function(mod, name) {
           $defineProperty(object, name, {
             get: function() { return mod[name]; },
@@ -501,6 +574,11 @@
         default:
           throw getInternalError(this.state);
       }
+    },
+    handleException: function(ex) {
+      this.GState = ST_CLOSED;
+      this.state = END_STATE;
+      throw ex;
     }
   };
 
@@ -558,12 +636,17 @@
   AsyncFunctionContext.prototype.end = function() {
     switch (this.state) {
       case END_STATE:
-        return;
+        this.resolve(this.returnValue);
+        break;
       case RETHROW_STATE:
         this.reject(this.storedException);
+        break;
       default:
         this.reject(getInternalError(this.state));
     }
+  };
+  AsyncFunctionContext.prototype.handleException = function() {
+    this.state = RETHROW_STATE;
   };
 
   function asyncWrap(innerFunction, self) {
@@ -602,9 +685,8 @@
     ctx.storedException = ex;
     var last = ctx.tryStack_[ctx.tryStack_.length - 1];
     if (!last) {
-      ctx.GState = ST_CLOSED;
-      ctx.state = END_STATE;
-      throw ex;
+      ctx.handleException(ex);
+      return;
     }
 
     ctx.state = last.catch !== undefined ? last.catch : last.finally;
@@ -638,6 +720,7 @@
     toProperty: toProperty,
     type: types,
     typeof: typeOf,
+    getOwnHashObject: getOwnHashObject
   };
 
 })(typeof global !== 'undefined' ? global : this);
