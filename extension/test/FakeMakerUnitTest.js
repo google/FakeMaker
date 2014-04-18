@@ -16,6 +16,45 @@ function dumpTrace(filename, transcoded) {
   console.log('trace: \n', trace.join('\n'));
 }
 
+function testFakeMaker(src, name) {
+  var ourConsole = console;
+  // Transcode before creating the proxy
+  var transcoded = transcode(src, name + '.js');
+  console.log('transcoded: ' + transcoded);
+  var fakeMaker = new FakeMaker();
+  windowProxy = fakeMaker.makeFakeWindow();
+  eval.call(window, transcoded);
+  json[name] = fakeMaker.toJSON();
+  ourConsole.log(name, JSON.parse(json[name]));
+  saveJsonData(name, json);
+}
+
+function testPlayback(src, name, doesPassCallback) {
+  var transcoded = transcode(src, 'playback' + name + '.js');
+  console.log('transcoded: ' + transcoded);
+  restoreJsonData(name, function(json) {
+    console.log('playback ' + name + ' data: ', JSON.parse(json));
+    var fakePlayer = new FakePlayer(json);
+    window.windowProxy = fakePlayer.startingObject();
+    fakePlayer.initialize();
+    eval(transcoded);
+    if (doesPassCallback(fakePlayer))
+      pass();
+  });
+}
+
+function createTests(testName, src, checkCallback) {
+  tests[testName] = function() {
+    testFakeMaker(src, testName);
+    return true;
+  }
+
+  var checkName = testName.replace('test', 'check');
+  tests[checkName] = function() {
+    testPlayback(src, testName, checkCallback);
+  }
+}
+
 // Each test must take care to match calls on proxy with calls on replay
 
 var objWithPrimitive = {foo: 1};
@@ -464,24 +503,20 @@ tests['testIIFE'] = function() {
   return json;
 };
 
+var srcIIFEGlobal = 'window.testIIFEGlobal = (function(global) {\n';
+srcIIFEGlobal += " var hasPerformance = typeof global.performance === 'object' && typeof global.performance.now === 'function';\n";
+srcIIFEGlobal += '  return hasPerformance;\n';
+srcIIFEGlobal += '})(this);\n';
+
 tests['testIIFEGlobal'] = function() {
-  var ourConsole = console;
-  // Transcode before creating the proxy
-  var src = document.querySelector('script[name="testIIFEGlobal"]').textContent;
-  var transcoded = transcode(src, 'testIIFEGlobal.js');
-  console.log('transcoded: ' + transcoded);
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval.call(window, transcoded);
+  testFakeMaker(srcIIFEGlobal, 'testIIFEGlobal');
+  return true;
+};
 
-  json.testIIFEGlobal = fakeMaker.toJSON();
-
-  ourConsole.log('testIIFEGlobal', JSON.parse(json.testIIFEGlobal));
-  var fakePlayer = new FakePlayer(json.testIIFEGlobal);
-  var win = fakePlayer.startingObject();
-  console.assert(win.performance.now);
-  pass();
-  return json;
+tests['checkIIFEGlobal'] = function() {
+  testPlayback(srcIIFEGlobal, 'testIIFEGlobal', function() {
+    return isSame(window.testIIFEGlobal, true);
+  });
 };
 
 tests['testIIFEGlobalProperty'] = function() {
@@ -522,24 +557,16 @@ tests['testGlobalPrototype'] = function() {
   return isSame(true, fakePlayer.endOfRecording()) && json;
 };
 
-tests['testTypeofGlobalPerformance'] = function() {
-  var ourConsole = console;
-  // Transcode before creating the proxy
-  var src = document.querySelector('script[name="testTypeofGlobalPerformance"]').textContent;
-  var transcoded = transcode(src, 'testTypeofGlobalPerformance.js');
-  console.log('transcoded: ' + transcoded);
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval.call(window, transcoded);
+var srcTypeofGlobalPerformance = "(function(global) {\n";
+srcTypeofGlobalPerformance += "  var hasPerformance = typeof global.performance === 'object' &&\n";
+srcTypeofGlobalPerformance += "                       typeof global.performance.now === 'function';\n";
+srcTypeofGlobalPerformance += "  if (!hasPerformance)\n";
+srcTypeofGlobalPerformance += "    throw new Error('This test failed');\n";
+srcTypeofGlobalPerformance += "})(this);\n";
 
-  json.testTypeofGlobalPerformance = fakeMaker.toJSON();
-
-  ourConsole.log('testTypeofGlobalPerformance', JSON.parse(json.testTypeofGlobalPerformance));
-  var fakePlayer = new FakePlayer(json.testTypeofGlobalPerformance);
-  windowProxy = fakePlayer.startingObject();
-  eval.call(null, transcoded);
-  return isSame(true, fakePlayer.endOfRecording()) && json;
- };
+createTests('testTypeofGlobalPerformance', srcTypeofGlobalPerformance, function(fakePlayer) {
+  return isSame(true, fakePlayer.endOfRecording());
+});
 
 tests['testVarSet'] = function() {
   var ourConsole = console;
@@ -719,38 +746,9 @@ checkedSrc += 'var box = document.querySelector(".one-time input");\n';
 checkedSrc += 'window.run = function() {return box.checked;}\n';
 checkedSrc += 'window.checkedResult = window.run();\n';
 
-tests['checked'] = function() {
-  var ourConsole = console;
-  var transcoded = transcode(checkedSrc, 'checked');
-  console.log('transcoded: ' + transcoded);
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval(transcoded);
-
-  console.log('Recording complete---------------------------------')
-
-  json.checked = fakeMaker.toJSON();
-
-  ourConsole.log('checked', JSON.parse(json.checked));
-  saveJsonData('checked', json);
-
-  // continues below
-  return true;
-}
-
-tests['checkedPlayer'] = function() {
-  var transcoded = transcode(checkedSrc, 'checked');
-  console.log('transcoded: ' + transcoded);
-
-  restoreJsonData('checked', function(json) {
-    var fakePlayer = new FakePlayer(json);
-    window.windowProxy = fakePlayer.startingObject();
-    fakePlayer.initialize();
-    eval(transcoded);
-    if (isSame(windowProxy.checkedResult, true))
-      pass();
-  });
-}
+createTests('testCheckedBox', checkedSrc, function(fakePlayer) {
+  return isSame(windowProxy.checkedResult, true);
+});
 
 tests['testImplicitGlobalPrototype'] = function() {
   var ourConsole = console;
@@ -786,135 +784,38 @@ tests['checkedImplicitGlobalPrototype'] = function() {
 
 var documentWriteSrc = 'document.write("<script>window.theDocumentWrite=true</script>");'
 
-tests['testDocumentWrite'] = function() {
-  var ourConsole = console;
-  var transcoded = transcode(documentWriteSrc, 'testDocumentWrite');
-  console.log('transcoded: ', transcoded);
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval.call(window, transcoded);
-  // The FakeMaker should not prevent the document.write
-  console.assert(window.theDocumentWrite);
-  json.testDocumentWrite = fakeMaker.toJSON();
+createTests('testDocumentWrite', documentWriteSrc,  function(fakePlayer) {
+  // The FakePlayer does nothing for document.write(). Any scripts
+  // are all extracted from the preprocessing and other DOM is deal with
+  // by proxies.
+  return isSame(true, fakePlayer.endOfRecording());
+});
 
-  ourConsole.log('testDocumentWrite', JSON.parse(json.testDocumentWrite));
-  saveJsonData('testDocumentWrite', json);
-  return true;
-}
+var builtInPrototypeSrc = 'Node.prototype.bind = function() {};\n';
+builtInPrototypeSrc += 'window.testbuiltInPrototype = typeof Node.prototype.bind;\n';
 
-tests['checkDocumentWrite'] = function() {
-  var transcoded = transcode(documentWriteSrc, 'checkImplicitGlobalPrototype.js');
-  console.log('transcoded: ' + transcoded);
-  console.assert(typeof window.theDocumentWrite === 'undefined');
-  restoreJsonData('testDocumentWrite', function(json) {
-    console.log('checkDocumentWrite playback data: ', JSON.parse(json));
-    var fakePlayer = new FakePlayer(json);
-    window.windowProxy = fakePlayer.startingObject();
-    fakePlayer.initialize();
-    eval(transcoded);
-    // The FakePlayer does not prevent the document.write(<script>)
-    if (isSame(true, window.theDocumentWrite))
-      pass();
-  });
-};
+createTests('testbuiltInPrototype', builtInPrototypeSrc, function() {
+  return isSame('function', windowProxy.testbuiltInPrototype);
+});
 
-var builtInPrototypeSrc = 'Node.prototype.bind = function() {};';
+// Define a global. The set is not recorded.
+var globalFunctionDeclSrc = 'function runBench() { return 66; };\n';
+globalFunctionDeclSrc += '(function (f){\n';
+globalFunctionDeclSrc += '  window.testGlobalFunctionDecl = f();\n';
+globalFunctionDeclSrc += '}(runBench));';
 
-tests['testbuiltInPrototype'] = function() {
-  var ourConsole = console;
-  var transcoded = transcode(builtInPrototypeSrc, 'testbuiltInPrototype');
-  console.log('transcoded: ', transcoded);
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval.call(window, transcoded);
+createTests('testglobalFunctionDecl', globalFunctionDeclSrc, function() {
+  return isSame(66, windowProxy.testGlobalFunctionDecl);
+});
 
-  json.testbuiltInPrototype = fakeMaker.toJSON();
-
-  ourConsole.log('testbuiltInPrototype', JSON.parse(json.testbuiltInPrototype));
-  saveJsonData('testbuiltInPrototype', json);
-  return true;
-}
-
-tests['checkbuiltInPrototype'] = function() {
-  var transcoded = transcode(builtInPrototypeSrc, 'checkbuiltInPrototype.js');
-  console.log('transcoded: ' + transcoded);
-  console.assert(typeof window.thebuiltInPrototype === 'undefined');
-  restoreJsonData('testbuiltInPrototype', function(json) {
-    console.log('checkbuiltInPrototype playback data: ', json)
-    var fakePlayer = new FakePlayer(json);
-    window.windowProxy = fakePlayer.startingObject();
-    fakePlayer.initialize();
-    eval(transcoded);
-    if (isSame('function', typeof windowProxy.Node.prototype.bind))
-      pass();
-  });
-};
-
-var globalFunctionDeclSrc = 'function runBench() { return 66; };\n(function (f){window.testGlobalFunctionDecl = f();}(runBench))';
-
-tests['testglobalFunctionDecl'] = function() {
-  var ourConsole = console;
-  var transcoded = transcode(globalFunctionDeclSrc, 'testglobalFunctionDecl');
-  console.log('transcoded: ', transcoded);
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval.call(window, transcoded);
-
-  json.testglobalFunctionDecl = fakeMaker.toJSON();
-
-  ourConsole.log('testglobalFunctionDecl', JSON.parse(json.testglobalFunctionDecl));
-  saveJsonData('testglobalFunctionDecl', json);
-  return true;
-}
-
-tests['checkglobalFunctionDecl'] = function() {
-  var transcoded = transcode(globalFunctionDeclSrc, 'checkglobalFunctionDecl.js');
-  console.log('transcoded: ' + transcoded);
-  restoreJsonData('testglobalFunctionDecl', function(json) {
-    console.log('checkglobalFunctionDecl playback data: ', json)
-    var fakePlayer = new FakePlayer(json);
-    window.windowProxy = fakePlayer.startingObject();
-    fakePlayer.initialize();
-    eval(transcoded);
-    if (isSame(66, windowProxy.testGlobalFunctionDecl))
-      pass();
-  });
-};
 
 var ElementAddEventListenersrc =  'var b = document.querySelector("body");\n';
     ElementAddEventListenersrc += 'b.addEventListener("click", function(){window.testElementAddEventListener=93; window.pass();});\n';
     ElementAddEventListenersrc += 'b.dispatchEvent(new MouseEvent("click"));\n';
 
-tests['testElementAddEventListener'] = function() {
-  var ourConsole = console;
-
-  var transcoded = transcode(ElementAddEventListenersrc, 'testElementAddEventListener.js');
-  console.log('transcoded: ' + transcoded);
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval.call(window, transcoded);
-
-  json.testElementAddEventListener = fakeMaker.toJSON();
-
-  ourConsole.log('testElementAddEventListener', JSON.parse(json.testElementAddEventListener));
-  saveJsonData('testElementAddEventListener', json);
-  return true;
-}
-
-tests['checkElementAddEventListener'] = function() {
-  var transcoded = transcode(ElementAddEventListenersrc, 'checkElementAddEventListener.js');
-  console.log('transcoded: ' + transcoded);
-  restoreJsonData('testElementAddEventListener', function(json) {
-    console.log('checkElementAddEventListener playback data: ', json)
-    var fakePlayer = new FakePlayer(json);
-    window.windowProxy = fakePlayer.startingObject();
-    fakePlayer.initialize();
-    eval(transcoded);
-    if (isSame(93, windowProxy.testElementAddEventListener))
-      pass();
-  });
-};
-
+createTests('testElementAddEventListener', ElementAddEventListenersrc, function() {
+  return isSame(93, windowProxy.testElementAddEventListener);
+});
 
 var LoadAddEventListenersrc =  'function fakeLoadHandler(){window.testLoadAddEventListener=39; console.log("set XXXXXXXX");window.pass();}\n';
 LoadAddEventListenersrc +=  'window.addEventListener("fakeLoad", fakeLoadHandler);\n';
@@ -974,34 +875,9 @@ var  ElementIdsrc = '';
 ElementIdsrc += 'function elementId(element) { return element.id };\n';
 ElementIdsrc += 'window.testElementId = elementId(oneTimeBindings);\n';
 
-tests['testElementId'] = function() {
-  var ourConsole = console;
-  var transcoded = transcode(ElementIdsrc, 'testElementId');
-  console.log('transcoded: ' + transcoded);
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval(transcoded);
-
-  json.testElementId = fakeMaker.toJSON();
-
-  ourConsole.log('testElementId', JSON.parse(json.testElementId));
-  saveJsonData('testElementId', json);
-  return true;
-}
-
-tests['checkElementId'] = function() {
-  var transcoded = transcode(ElementIdsrc, 'checkElementId.js');
-  console.log('transcoded: ' + transcoded);
-  restoreJsonData('testElementId', function(json) {
-    console.log('checkElementId playback data: ', json)
-    var fakePlayer = new FakePlayer(json);
-    window.windowProxy = fakePlayer.startingObject();
-    fakePlayer.initialize();
-    eval(transcoded);
-    if (isSame('oneTimeBindings', windowProxy.testElementId))
-          pass();
-  });
-};
+createTests('testElementId', ElementIdsrc, function() {
+  return isSame('oneTimeBindings', windowProxy.testElementId);
+});
 
 var  BuiltInFunctionPropertysrc = '';
 BuiltInFunctionPropertysrc += '(function(global) {var hasIt = typeof HTMLTemplateElement !== "undefined";\n';

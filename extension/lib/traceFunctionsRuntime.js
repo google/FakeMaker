@@ -27,6 +27,7 @@ window.__F_ = {
   enterF: function enterF(sourceId, offset) {
     __F_.sourceF(sourceId);
     __F_.calls.push(offset);
+    this.trace(sourceId, offset);
     __F_.depth++;
   },
   exitF: function exitF(offset) {
@@ -36,5 +37,9 @@ window.__F_ = {
   callF: function callF(sourceId, offset) {
     __F_.sourceF(sourceId);
     __F_.calls.push('-0x' + (offset + 1).toString(16));
+    __F_.trace(sourceId, offset);
+  },
+  trace: function(sourceId, offset) {
+    console.log('__F_ ' + this.calls.length + ': ' + offset + '@' + this.urls[sourceId]);
   }
 };

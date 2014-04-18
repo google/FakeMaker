@@ -54,12 +54,6 @@ if (Platform.flags) {
   var timer = {};
 })();
 </script>
-<script name="testIIFEGlobal" type="text/fakeMaker">
-(function(global) {
-  var hasPerformance = typeof global.performance === 'object' && typeof global.performance.now === 'function';
-  return hasPerformance;
-})(this);
-</script>
 
 <script name="testIIFEGlobalProperty" type="text/fakeMaker">
 (function(global) {

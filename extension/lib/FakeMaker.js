@@ -8,7 +8,7 @@
 
 (function(){
 
-var _debug = false;
+var _debug = true;
 var maker_debug = _debug;
 var expando_debug = _debug;
 var accesses_debug = _debug;
@@ -34,6 +34,8 @@ function debugAll(value) {
 }
 
 function FakeObjectRef(index) {
+  // The DOM object we are faking is _objectsReferenced[index].
+  // The JSONable representation of that DOM object is at _jsonableObjectReps[index].
   this._fake_object_ref = index;
 }
 
@@ -44,7 +46,6 @@ function FakeMaker() {
   this._proxiedObjects = [];
   this._proxiesOfObjects = [];
   this._proxiedObjectRecievers = [];
-  this._propertiesAccessedOnProxies = [];
   this._expandoProperties = [];
   this._originalProperties = []; // object keys when proxy first created.
   this._setExpandoGlobals = [];
@@ -52,8 +53,10 @@ function FakeMaker() {
 
   this._callbacks = [];
 
-  this._objectsReferenced = [];
-  this._objectReferences = [];
+  // Co-indexed
+  this._objectsReferenced = [];  // DOM objects
+  this._jsonableObjectReps = [];  // JSONable object representations
+  this._objectReferences = [];  // Pointers to _objectsReferenced and _jsonableObjectReps
 
   this._recording = []; // Number, String, Boolean. Objects are refs to _objectsReferenced
 
@@ -153,40 +156,8 @@ FakeMaker.prototype = {
 
   // The record returned as JSON.
   toJSON: function() {
-    this.stopRecording('');
-    this.startRecording = function() {}
-    // The object graph is encoded as an array of objects with properties that are
-    // 1) references into the array (for objects or functions), or
-    // 2) empty objects meaning value-returning properties recorded in 'recording'
-    var jsonableProxiesOfObjects = [];
-    // The number of _objectsReferenced increases as we prepare them.
-    for (var i = 0; i < this._objectsReferenced.length; i++) {
-      var obj = this._objectsReferenced[i];
-      var index = this._proxiedObjects.indexOf(obj);
-      if (index === -1) {
-        // Perhaps we recorded a proxy, eg a window.prop we created in makeFakeWindow();
-        index = this._proxiesOfObjects.indexOf(obj);
-        if (index === -1) {
-          throw new Error('Recorded object not proxied and not a proxy');
-        } else {
-          obj = this._proxiedObjects[index];
-        }
-      }
-      var accessedProperties = this._propertiesAccessedOnProxies[index];
-
-      if (accesses_debug) {
-        if (accessedProperties)
-          console.log('accessedProperties: ' + Object.keys(accessedProperties).join(','));
-        else
-          console.log('no accessedProperties on recorded object ' + i);
-      }
-
-      var objectReference = this._objectReferences[i];
-      jsonableProxiesOfObjects.push(this._preparePropertiesForJSON(objectReference, obj, accessedProperties || []));
-    }
-
     var fullRecord = {
-      objects: jsonableProxiesOfObjects,
+      objects: this._jsonableObjectReps,
       expandoProperties: this._setExpandoGlobals,
       recording: this._recording
     };
@@ -299,26 +270,50 @@ FakeMaker.prototype = {
       console.log('_lookupProxyObject no find for object typeof ' + typeof obj + ' at ' + path);
   },
 
+  _createJSONableObjectRepresentation: function(obj, path) {
+      var jsonableObjectRep = {};
+      var fakeMaker = this;
+      var rep = jsonableObjectRep;
+      var repPath = path;
+      // Walk the proto chain of obj and set fake protos on jsonableObjectRep.
+      this._someProtos(Object.getPrototypeOf(obj), function(proto) {
+        var indexOfRefedProto = fakeMaker._objectsReferenced.indexOf(proto);
+        repPath = repPath + '__proto__';
+        if (indexOfRefedProto === -1) {
+          rep._fake_proto_  = fakeMaker._getOrCreateObjectRef(proto, repPath);
+        } else {
+          rep._fake_proto_ = fakeMaker._objectReferences[indexOfRefedProto];
+        }
+        rep = rep._fake_proto_;
+        return (indexOfRefedProto !== -1);  // stop if we found a proxy on chain
+      }, path);
+      return jsonableObjectRep;
+  },
+
   _getOrCreateObjectRef: function(obj, path) {
     if (!(obj))
       throw new Error('null object passed to _getOrCreateObjectRef');
 
-    var index = this._objectsReferenced.indexOf(obj);
+    var indexOfRefedObject = this._objectsReferenced.indexOf(obj);
     var ref;
-    if (index !== -1) {
-      ref = this._objectReferences[index];
+    if (indexOfRefedObject !== -1) {
+      ref = this._objectReferences[indexOfRefedObject];
     } else {
+      // The rep may cause more ref creation for proto, so create it first before
+      // moving the indexes up.
+      var jsonableObjectRep = this._createJSONableObjectRepresentation(obj, path);
       ref = new FakeObjectRef(this._objectsReferenced.length);
       this._objectReferences.push(ref);
       this._objectsReferenced.push(obj);
+      this._jsonableObjectReps.push(jsonableObjectRep);
     }
 
     if (recording_debug) {
       var message;
-      if (index === -1) {
+      if (indexOfRefedObject === -1) {
         message =  'create ' + (this._objectsReferenced.length - 1);
       }  else {
-        message = 'get ' + index;
+        message = 'get ' + indexOfRefedObject;
       }
       message +=  ' at ' + path;
       console.log('_getOrCreateObjectRef ' + message, ref);
@@ -334,12 +329,10 @@ FakeMaker.prototype = {
 
   // Append primitives, store objects and append their reference.
   _record: function(value, path) {
-    if (path === 'window.HTMLElement.prototype.constructor.name')
-      throw new Error("here")
     if (!this._active)
       return value;
     if (value && typeof value === 'object') {
-      if (!value._fake_object_ref)
+      if (!Object.getOwnPropertyDescriptor(value, '_fake_object_ref'))
         throw new Error('Attempt to record an object');
       this._recording.push(value);
     } else if (typeof value === 'undefined') {
@@ -380,10 +373,10 @@ FakeMaker.prototype = {
         // Compound values are set into the object graph.
         // The player will re-constitute the object graph to support
         // accesses to these values.
-        this._getOrCreateObjectRef(value, path);
+        this._record(this._getOrCreateObjectRef(value, path), path);
         break;
       case 'function':
-        this._getOrCreateFunctionObjectRef(value, path);
+        this._record(this._getOrCreateFunctionObjectRef(value, path), path);
         break;
       default:
         // Simple values are recorded. The player will replay these values
@@ -395,11 +388,7 @@ FakeMaker.prototype = {
   },
 
   _wrapCallResult: function(returnValue, theThis, path) {
-      var result = this._wrapReturnValue(returnValue, theThis, path);
-      if (this.isAProxy(result)) { // Then we did not record the return value, record its ref.
-          this._record(this._getOrCreateObjectRef(returnValue, path), path);
-      }
-      return result;
+      return this._wrapReturnValue(returnValue, theThis, path);
   },
 
   _proxyACallback: function(callback, path, sync) {
@@ -481,8 +470,8 @@ FakeMaker.prototype = {
   },
 
   getExpandoProperty: function(obj, name) {
-    if (expando_debug) console.log('looking for expando ' + name);
     var indexOfProxy = this._proxiedObjects.indexOf(obj);
+    if (expando_debug) console.log('looking for expando ' + name + ' in obj at index ' + indexOfProxy);
     if (!(indexOfProxy !== -1)) {
       console.log('getExpandoProperty typeof obj: ' + (obj ? typeof(obj) : 'null') + ' name ' + name);
       console.log('getExpandoProperty obj: ' + Object.getOwnPropertyNames(obj).join(','));
@@ -522,12 +511,15 @@ FakeMaker.prototype = {
   },
 
   _markAccess: function(indexOfProxy, name) {
-    var accessed = this._propertiesAccessedOnProxies[indexOfProxy] =
-        this._propertiesAccessedOnProxies[indexOfProxy] || Object.create(null);
-    accessed[name] = accessed[name] ? (++accessed[name]) : 1;
+    // The DOM property 'name' was used by the app.
+    var obj = this._proxiedObjects[indexOfProxy];
+    var indexOfRefedObject = this._objectsReferenced.indexOf(obj);
+
+    var jsonableObjectRep = this._jsonableObjectReps[indexOfRefedObject];
+    // Mark the rep to create a getter at this name in the player.
+    jsonableObjectRep[name] = true;
 
     if (accesses_debug) {
-      var obj = this._proxiedObjects[indexOfProxy];
       var indexOfRef = this._objectsReferenced.indexOf(obj);
       var ref;
       if (indexOfRef !== -1) {
@@ -535,12 +527,8 @@ FakeMaker.prototype = {
       } else {
         throw new Error('_markAccess ' + name + ' is not in _objectsReferenced ' + Object.getOwnPropertyNames(obj).join(', '));
       }
-      console.log('Counted access to ' + name + ' = ' + accessed[name] +
-            (ref ?  ', ref ' + ref._fake_object_ref : ', not refed <<<!!??'));
+      console.log('Object at ' + indexOfProxy + ' accesses ' + name);
     }
-
-    if (typeof accessed[name] !== 'number')
-      throw new Error('Access count must be a number ' + (typeof accessed[name]));
   },
 
   _getPropertyDescriptor: function(target, name, path) {
@@ -591,34 +579,17 @@ FakeMaker.prototype = {
       return descriptor;
   },
 
-  treatAsGetter: function(name, path) {
-    if (get_set_debug)
-      console.log('treatAsGetter ' + name + ' at ' + path);
-    if (name === 'currentScript' && path.indexOf('document') !== -1)
-      return true;
-  },
-
   _getFromPropertyDescriptor: function(obj, target, name, receiver, descriptor, ownsName, path) {
     var result;
     if (!descriptor) {
       result = this._wrapReturnValue(undefined, undefined, path + '.' + name);
       if (get_set_debug)
         console.log('_getFromPropertyDescriptor ' + name + ': undefined ' + path);
-    } else if (descriptor.get || this.treatAsGetter(name, path)) {
+    } else if (descriptor.get) {
       this.stopRecording(path);
       var value = Reflect.get(ownsName, name, obj);
       this.startRecording(path);
       result = this._wrapCallResult(value, ownsName, path + '.' + name);
-      if (this.treatAsGetter(name, path)) {
-        var index = this._objectsReferenced.indexOf(obj);
-        if (index === -1)
-          throw new Error('_getFromPropertyDescriptor no object reference for ' + path);
-        var ref = this._objectReferences[index];
-        ref.treatedAsGetter = ref.treatedAsGetter || {};
-        ref.treatedAsGetter[name] = true;
-        if (get_set_debug)
-          console.log('_getFromPropertyDescriptor treatedAsGetter ' + name + ' at ' + path);
-      }
       if (get_set_debug)
         console.log('get from getter ' + name+ ' {' + typeof result + '}' + path);
     } else if (this.isAProxy(descriptor.value)) {
@@ -636,6 +607,16 @@ FakeMaker.prototype = {
       result = descriptor.value;
       if (get_set_debug)
         console.log('_getFromPropertyDescriptor returns existing proxy for : ' + name + ' {' + typeof proxiedObj + '} at ' + path);
+    } else if (name === 'prototype') {
+      // DOM .prototype is non-configurable. Therefore we cannot replace it with
+      // a getter function during playback.  Instead we send an object ref to be
+      // resolve in the player.
+      var ref = this._getOrCreateObjectRef(descriptor.value, path + '.prototype');
+      var indexOfRefedObject = this._objectsReferenced.indexOf(obj);
+      this._jsonableObjectReps[indexOfRefedObject].prototype = ref;
+      if (get_set_debug)
+        console.log('_getFromPropertyDescriptor prototype ', ref);
+      return ref;
     } else {
       // Wrap the value and return it.
       result = this._wrapPropertyDescriptor(target, name, descriptor, ownsName, path).value;
@@ -667,8 +648,8 @@ FakeMaker.prototype = {
         this.registerExpando(obj, name);
       }
     } else {
-    if (expando_debug)
-      console.log('Not an expando ' + name + ' obj[name] set');
+      if (expando_debug)
+        console.log('Not an expando ' + name + ' obj[name] set');
       // Mark access so the property appears on our fake in the player.
       this._markAccess(indexOfProxy, name);
     }
@@ -703,10 +684,17 @@ FakeMaker.prototype = {
         if (name === '__fakeMakerProxy')
           return true;
         // Is this a DOM operation needed for JS to work correctly?
-        var dontProxy = fakeMaker._dontProxy(path, obj, name);
-        if (dontProxy)
-          return dontProxy;  // Yes, just let the player call it.
+       // var dontProxy = fakeMaker._dontProxy(path, obj, name);
+       // if (dontProxy)
+       //   return dontProxy;  // Yes, just let the player call it.
 
+        if (name === '__proto__') { // then we can't use getOwn* functions
+          if (get_set_debug)
+            console.log('get __proto__ at ' + path  + '.__proto__');
+          var protoValue = Object.getPrototypeOf(obj);
+          if (protoValue)
+            return fakeMaker._proxyObject(protoValue, obj, path, path + '.__proto__');
+        }
         // Was this property written by JS onto obj?
         var result = fakeMaker.getExpandoProperty(obj, name);
         if (result)
@@ -718,16 +706,6 @@ FakeMaker.prototype = {
         if (get_set_debug) {
           console.log('get ' + name + ' obj === window: ' + (obj === window),
             ' obj: ' + fakeMaker.classNameIfPossible(obj));
-        }
-
-        if (name === '__proto__') { // then we can't use getOwn* functions
-          if (get_set_debug)
-            console.log('get __proto__ at ' + path  + '.__proto__');
-          var protoValue = Object.getPrototypeOf(obj);
-          if (!protoValue)
-            return fakeMaker._wrapReturnValue(undefined, undefined, path + '.' + name);
-          else
-            return fakeMaker._wrapReturnValue(protoValue, obj, path + '.__proto__');
         }
 
         if (get_set_debug)
@@ -1009,44 +987,24 @@ FakeMaker.prototype = {
 
   functionProperties : ["length", "name", "arguments", "caller", "prototype"],
 
-  _preparePropertiesForJSON: function(objectReference, obj, accessedProperties) {
-    // The entry in the array representing each object in the graph encodes its type.
-    var jsonable = objectReference._fake_function_ ? {_fake_function_: true} : {};
-
-    Object.keys(accessedProperties).forEach(function(key) {
-      if (accesses_debug) {
-        console.log('_preparePropertiesForJSON ' + key +
-          ' with ' + accessedProperties[key] + ' accesses');
-      }
-      if (key === '__proto__') {
-        jsonable._fake_proto_ = this._replaceObjectsAndFunctions(obj, key);
-      }
-      else {
-        jsonable[key] = this._replaceObjectsAndFunctions(obj, key);
-      }
-    }.bind(this));
-
-    return jsonable;
-  },
-
   _getObjectReferenceIndex: function(value, propertyName) {
-    var index = this._objectsReferenced.indexOf(value);
-    if (index === -1) {
+    var indexOfRefedObject = this._objectsReferenced.indexOf(value);
+    if (indexOfRefedObject === -1) {
       if (this.isAProxy(value)) {
         if (recording_debug)
           console.log('_replaceObjectsAndFunctions descriptor.value isAProxy ' + propertyName);
 
         var indexOfProxy = this._proxiesOfObjects.indexOf(value);
         var objProxied = this._proxiedObjects[indexOfProxy];
-        index = this._objectsReferenced.indexOf(objProxied);
+        indexOfRefedObject = this._objectsReferenced.indexOf(objProxied);
 
         if (recording_debug) {
           console.log('_replaceObjectsAndFunctions '+ propertyName
-              +' found proxy, returning ref ', this._objectReferences[index]);
+              +' found proxy, returning ref ', this._objectReferences[indexOfRefedObject]);
         }
       } // else the propertyName may have been used in getOwnPropertyNames only
     }
-    return index;
+    return indexOfRefedObject;
   },
 
   // Given an obj and a propertyName we know was accessed, return value so
@@ -1054,6 +1012,8 @@ FakeMaker.prototype = {
 
   _replaceObjectsAndFunctions: function(obj, propertyName) {
     var jsonablePropertyRep = {};
+
+    // Set object reference for __proto__ property.
     if (propertyName === '__proto__') {
       var protoValue = Object.getPrototypeOf(obj);
       if (!protoValue) {
@@ -1070,30 +1030,8 @@ FakeMaker.prototype = {
       return jsonablePropertyRep;
     }
 
-    var descriptor = this._getPropertyDescriptor(obj, propertyName, '_replaceObjectsAndFunctions.' + propertyName);
-
-    if (descriptor && descriptor.get)
-      jsonablePropertyRep._fake_getter_ = true;
-
-    if (descriptor && descriptor.set)
-      jsonablePropertyRep._fake_setter_ = true;
-
-    if (descriptor && !descriptor.get && !descriptor.set) {
-      var value = descriptor.value;
-      var index = this._getObjectReferenceIndex(value, propertyName);
-      var ref = this._objectReferences[index]
-      if (index !== -1 && ref.treatedAsGetter && ref.treatedAsGetter[propertyName]) {
-        jsonablePropertyRep._fake_getter_ = true;
-      } else if (value && (typeof value === 'object' || typeof value === 'function')) {
-        if (index !== -1)
-          jsonablePropertyRep = ref;
-       } else {
-        jsonablePropertyRep = 1; // a value, use getter to recording.
-      }
-    }
-    if (recording_debug)
-      console.log('_replaceObjectsAndFunctions ' + propertyName + ' jsonable: %o using descriptor: %o' , jsonablePropertyRep, descriptor);
-    return jsonablePropertyRep;
+    // Other properties will be replay() functions in the player.
+    return jsonablePropertyRep = 1;
   },
 
 };

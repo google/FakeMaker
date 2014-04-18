@@ -58,7 +58,7 @@ FakePlayer.prototype = {
 
   startingObject: function () {
     this._currentReplay = 0;
-    return this._rebuiltObjects[0];
+    return this.replay('');
   },
 
   endOfRecording: function() {
@@ -78,24 +78,28 @@ FakePlayer.prototype = {
     return this.callbacks[callbackIndex].call(theThis);
   },
 
-  replayFunction: function(reply) {
+  createFunctionObject: function(propertyRep) {
     var fakePlayer = this;
-    if (typeof reply._callback_ === 'number')
-      return this.replayCallback(reply);
+    if (typeof propertyRep._callback_ === 'number')
+      return this.replayCallback(propertyRep);
 
     var fnc = function () {
       fakePlayer.checkForCallback(name, arguments);
       return fakePlayer.replay();  // as a function, we replay
     }
 
-    var obj = this._rebuiltObjects[reply._fake_object_ref];
+    var obj = this._rebuiltObjects[propertyRep._fake_object_ref];
     Object.getOwnPropertyNames(obj).forEach(function(prop) {
-      if (!fnc.hasOwnProperty(prop)) {  // TODO check for these when ?
+      // If the recording used a built-in function property, use the built-in
+      // one in the player.  Otherwise copy from the obj. (fnc is a simple
+      // built-in function)
+      if (!fnc.hasOwnProperty(prop)) {
         des = Object.getOwnPropertyDescriptor(obj, prop);
         Object.defineProperty(fnc, prop, des);
       }
     });
-    return fnc;
+    // update the rebuilt object into a function with properties.
+    return this._rebuiltObjects[propertyRep._fake_object_ref] = fnc;
   },
 
   replay: function(key) {
@@ -120,7 +124,16 @@ FakePlayer.prototype = {
       }
       return obj;
     } else if (reply && typeof reply === 'object' && reply._fake_function_) {
-      var fnc = this.replayFunction(reply);
+      var fnc = this._rebuiltObjects[reply._fake_object_ref];
+      if (typeof fnc !== 'function') {
+        // During recording we found a function-valued property. The function
+        // may itself have properties. Overwrite the slot with a
+        // function-with-properties object and return the result.
+        // We only do this one time: if during recording the function-valued
+        // property was over-written then it would be set operation and JS in
+        // playback would also write the result.
+        fnc = this.createFunctionObject(reply);
+      }
       if (debug_player) {
         console.log(index + ': replay (' + path + ') returns function ' +
               reply._fake_object_ref);
@@ -137,6 +150,8 @@ FakePlayer.prototype = {
 
   checkSync: function(path) {
     var traceIndex = parseInt(path.split(' ').pop(), 10);
+    if (traceIndex < 0)
+      return; // just testing or first object ('window')
     if (__F_.calls.length - 1 !== traceIndex) {
       var splits = path.split(' ');
       var encodedOffset = splits[splits.length - 2]
@@ -323,10 +338,8 @@ FakePlayer.prototype = {
       var propertyRep = objRep[name];
       if (propertyRep._fake_function_) {
         // Write over the unnamed entry with a named version.
-        fakePlayer._rebuiltObjects[propertyRep._fake_object_ref] = function() {
-          fakePlayer.checkForCallback(name, arguments);
-          return fakePlayer.replay(name);
-        }
+        var fnc = this.createFunctionObject(propertyRep);
+        fakePlayer._rebuiltObjects[propertyRep._fake_object_ref] = fnc;
       }
     });
   },
