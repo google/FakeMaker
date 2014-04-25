@@ -78,13 +78,13 @@ FakePlayer.prototype = {
     return this.callbacks[callbackIndex].call(theThis);
   },
 
-  createFunctionObject: function(propertyRep) {
+  createFunctionObject: function(propertyRep, propertyName, path) {
     var fakePlayer = this;
     if (typeof propertyRep._callback_ === 'number')
       return this.replayCallback(propertyRep);
 
     var fnc = function () {
-      fakePlayer.checkForCallback(name, arguments);
+      fakePlayer.checkForCallback(propertyName, arguments);
       return fakePlayer.replay();  // as a function, we replay
     }
 
@@ -132,7 +132,7 @@ FakePlayer.prototype = {
         // We only do this one time: if during recording the function-valued
         // property was over-written then it would be set operation and JS in
         // playback would also write the result.
-        fnc = this.createFunctionObject(reply);
+        fnc = this.createFunctionObject(reply, key, path);
       }
       if (debug_player) {
         console.log(index + ': replay (' + path + ') returns function ' +
@@ -338,7 +338,7 @@ FakePlayer.prototype = {
       var propertyRep = objRep[name];
       if (propertyRep._fake_function_) {
         // Write over the unnamed entry with a named version.
-        var fnc = this.createFunctionObject(propertyRep);
+        var fnc = this.createFunctionObject(propertyRep, name, '');
         fakePlayer._rebuiltObjects[propertyRep._fake_object_ref] = fnc;
       }
     });
@@ -368,7 +368,6 @@ FakePlayer.prototype = {
         // values
         Object.defineProperty(shell, name, {
           get: function() {
-            fakePlayer.checkForCallback(name, arguments);
             return fakePlayer.replay(name)
           },
           configurable: true
