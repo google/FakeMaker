@@ -102,8 +102,10 @@ function FakeMaker() {
             }
             chain.push(deproxiedProto);
           });
-          if (!found)
+          if (!found) {
+            console.log('chain of deproxiedProto ', chain)
             throw new Error('The CustomElement prototype must extend HTMLElement.prototype');
+          }
           // Copy the user's object, up to the required prototype.
           chain.reverse();
           var prototypeCopy = HTMLElement.prototype;
@@ -195,7 +197,7 @@ FakeMaker.prototype = {
         case 'object':
         case 'function':
           window[name] =
-            this._proxyObject(window[name], window[name], 'window.'+name);
+            this._getOrCreateProxyObject(window[name], window[name], 'window.'+name);
           break;
         default:
           break;
@@ -350,7 +352,7 @@ FakeMaker.prototype = {
     return value;
   },
 
-  _proxyObject: function(obj, theThis, path) {
+  _getOrCreateProxyObject: function(obj, theThis, path) {
     if (path.indexOf('windowProxy.Object') !== -1)
       throw new Error('Builtin Object seen on path');
     if (!obj)
@@ -384,7 +386,7 @@ FakeMaker.prototype = {
         return this._record(value, path);
     }
     // Compound values are tracked recursively.
-    return this._proxyObject(value, theThis, path);
+    return this._getOrCreateProxyObject(value, theThis, path);
   },
 
   _wrapCallResult: function(returnValue, theThis, path) {
@@ -409,7 +411,7 @@ FakeMaker.prototype = {
         console.log('_proxyACallback callback called ' + path + ' with depth ' + __F_.depth);
 
       // Record this call. We are called out of the DOM so we have to assume no proxies exist.
-      var fncProxy = fakeMaker._proxyObject(callback, this, path);
+      var fncProxy = fakeMaker._getOrCreateProxyObject(callback, this, path);
       var ref = fakeMaker._getOrCreateFunctionObjectRef(callback, path);
       var refThis = fakeMaker._getOrCreateObjectRef(this, path+'.this');
       ref._callback_this = refThis._fake_object_ref;
@@ -423,7 +425,7 @@ FakeMaker.prototype = {
       // In normal proxy.apply, 'this' is already proxied because the .apply was preceded by a .get().
       // But in callback apply here, the DOM has the 'this' object. So we need to proxy it to
       // record the callback actions.
-      var proxyThis = fakeMaker._proxyObject(this, null, path + '.this');
+      var proxyThis = fakeMaker._getOrCreateProxyObject(this, null, path + '.this');
       if (calls_debug)
         console.log('_proxyACallback entering callback with "this" proxyIndex ' + fakeMaker._proxiesOfObjects.indexOf(proxyThis));
       callback.apply(proxyThis, arguments);
@@ -612,13 +614,13 @@ FakeMaker.prototype = {
     } else if (name === 'prototype') {
       // DOM .prototype is non-configurable. Therefore we cannot replace it with
       // a getter function during playback.  Instead we send an object ref to be
-      // resolve in the player.
+      // resolved in the player and we don't record it.
       var ref = this._getOrCreateObjectRef(descriptor.value, path + '.prototype');
       var indexOfRefedObject = this._objectsReferenced.indexOf(obj);
       this._jsonableObjectReps[indexOfRefedObject].prototype = ref;
       if (get_set_debug)
         console.log('_getFromPropertyDescriptor prototype ', ref);
-      return ref;
+      return this._getOrCreateProxyObject(descriptor.value, obj, path + '.prototype');
     } else {
       // Wrap the value and return it.
       result = this._wrapPropertyDescriptor(target, name, descriptor, ownsName, path).value;
@@ -695,7 +697,7 @@ FakeMaker.prototype = {
             console.log('get __proto__ at ' + path  + '.__proto__');
           var protoValue = Object.getPrototypeOf(obj);
           if (protoValue)
-            return fakeMaker._proxyObject(protoValue, obj, path, path + '.__proto__');
+            return fakeMaker._getOrCreateProxyObject(protoValue, obj, path, path + '.__proto__');
         }
         // Was this property written by JS onto obj?
         var result = fakeMaker.getExpandoProperty(obj, name);
