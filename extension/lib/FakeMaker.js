@@ -594,15 +594,17 @@ FakeMaker.prototype = {
         console.log('get from getter ' + name+ ' {' + typeof result + '}' + path);
     } else if (this.isAProxy(descriptor.value)) {
       // Only objects and functions have proxies, so property is one of those.
-      // The object graph will handle playback, just ref it.
       var indexOfObj = this._proxiesOfObjects.indexOf(descriptor.value);
       var proxiedObj = this._proxiedObjects[indexOfObj];
+      var ref;
       if (typeof proxiedObj === 'object')
-        this._getOrCreateObjectRef(proxiedObj, path);
+        ref = this._getOrCreateObjectRef(proxiedObj, path);
       else if (typeof proxiedObj === 'function')
-        this._getOrCreateFunctionObjectRef(proxiedObj, path);
+        ref = this._getOrCreateFunctionObjectRef(proxiedObj, path);
       else
         throw new Error('Proxy get for proxy is not an object or function');
+
+      this._record(ref, path + '.' + name);
       // Return the pre-existing proxy.
       result = descriptor.value;
       if (get_set_debug)
