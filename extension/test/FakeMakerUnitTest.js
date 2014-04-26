@@ -1232,25 +1232,11 @@ tests['testWebKitShadowRoot'] = function() {
 }
 
 
+var detectEvalSrc = document.querySelector('script[name="testDetectEval"]').textContent;
 
-tests['testDetectEval'] = function() {
-  var ourConsole = console;
-  // Transcode before creating the proxy
-  var src = document.querySelector('script[name="testDetectEval"]').textContent;
-  var transcoded = transcode(src, 'testDetectEval.js');
-  console.log('transcoded: ' + transcoded);
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval.call(window, transcoded);
-
-  json.testDetectEval = fakeMaker.toJSON();
-
-  ourConsole.log('testDetectEval', JSON.parse(json.testDetectEval));
-  var fakePlayer = new FakePlayer(json.testDetectEval);
-  windowProxy = fakePlayer.startingObject();
-  eval.call(null, transcoded);
-  return isSame(true, fakePlayer.endOfRecording()) && json;
- };
+createTests('testDetectEval', detectEvalSrc, function(fakePlayer) {
+  return isSame(true, fakePlayer.endOfRecording());
+});
 
 var MutableObjectValueSrc = "(function() {\n";
 MutableObjectValueSrc += "window.testMutableObjectValue = document.documentElement.children.length;\n";
@@ -1299,43 +1285,13 @@ DomPrototypeAddSrc += "var add = DOMTokenList.prototype.add;\n";
 DomPrototypeAddSrc += "DOMTokenList.prototype.add = function() {;\n";
 DomPrototypeAddSrc += "    add.call(this, arguments[0]);\n";
 DomPrototypeAddSrc += "  };\n";
+DomPrototypeAddSrc += "oneTimeBindings.classList.add('foo');"
+DomPrototypeAddSrc += "window.tetDomPrototypeAdd = oneTimeBindings.classList.contains('foo');"
 DomPrototypeAddSrc += "})();\n";
 
-tests['testDomPrototypeAdd'] = function() {
-  var ourConsole = console;
-  var transcoded = transcode(DomPrototypeAddSrc, 'testDomPrototypeAdd.js');
-  console.log('transcoded: ' + transcoded);
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval(transcoded);
-
-  json.testDomPrototypeAdd = fakeMaker.toJSON();
-
-  ourConsole.log('testDomPrototypeAdd', JSON.parse(json.testDomPrototypeAdd));
-  saveJsonData('testDomPrototypeAdd', json);
-
-  dumpTrace('testDomPrototypeAdd.js', transcoded);
-  return true;
-}
-
-tests['checkDomPrototypeAdd'] = function() {
-  var transcoded = transcode(DomPrototypeAddSrc, 'checkDomPrototypeAdd.js');
-  console.log('transcoded: ' + transcoded);
-  restoreJsonData('testDomPrototypeAdd', function(json) {
-    console.log('checkDomPrototypeAdd playback data: ', json)
-    var fakePlayer = new FakePlayer(json);
-    window.windowProxy = fakePlayer.startingObject();
-    fakePlayer.initialize();
-    try {
-      var result = eval(transcoded);
-    } catch(e) {
-      console.error('FAILED ', e.stack || e);
-      dumpTrace('checkDomPrototypeAdd.js', transcoded);
-    }
-    if (isSame('function', windowProxy.testDomPrototypeAdd))
-          pass();
-  });
-};
+createTests('testDomPrototypeAdd',DomPrototypeAddSrc, function() {
+  return isSame('function', windowProxy.testDomPrototypeAdd);
+});
 
 window.tests = tests;
 

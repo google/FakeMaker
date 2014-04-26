@@ -698,6 +698,8 @@ FakeMaker.prototype = {
           var protoValue = Object.getPrototypeOf(obj);
           if (protoValue)
             return fakeMaker._getOrCreateProxyObject(protoValue, obj, path, path + '.__proto__');
+          else
+            return fakeMaker._wrapReturnValue(protoValue, obj, path  + '.__proto__');
         }
         // Was this property written by JS onto obj?
         var result = fakeMaker.getExpandoProperty(obj, name);
