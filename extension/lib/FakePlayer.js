@@ -99,6 +99,10 @@ FakePlayer.prototype = {
       } else if (prop === 'prototype') {
         // We can't reconfigure .prototype but we can over-write it.
         fnc.prototype = obj.prototype;
+        if (propertyName === 'HTMLElement') {
+          // Save the HTMLElement.prototype for use in createCustomElement
+          fakePlayer.HTMLElement_prototype = fnc.prototype;
+        }
       }
     });
     // update the rebuilt object into a function with properties.
@@ -252,9 +256,14 @@ FakePlayer.prototype = {
   createFakeCustomElement: function(element, prototype) {
     var fakePlayer = this;
     // element has recording info, prototype has app-defined JS functions.
-    // Our fake custom element needs the recording info except when there are JS function.
-    // Write the app-defined JS functions onto the recording object proto.
-    fakePlayer.copyOwnProperties(prototype, element.__proto__);
+    // Our fake custom element needs the recording info.
+    // As we walk the proto chain we should hit HTMLElement.prototype.
+    var found = fakePlayer._someProtos(prototype, function(proto) {
+      // Write the app-defined JS functions onto the recording object proto.
+      fakePlayer.copyOwnProperties(proto, element.__proto__);
+      return (proto === fakePlayer.HTMLElement_prototype);
+    }, 'CustomElement');
+    console.assert(found);
     element.__fakeCustomElement = true;
     return element;
   },

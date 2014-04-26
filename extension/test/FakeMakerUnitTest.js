@@ -37,7 +37,12 @@ function testPlayback(src, name, doesPassCallback) {
     var fakePlayer = new FakePlayer(json);
     window.windowProxy = fakePlayer.startingObject();
     fakePlayer.initialize();
-    eval(transcoded);
+    try {
+      var result = eval(transcoded);
+    } catch(e) {
+      console.error(name + ' FAILED ', e.stack || e);
+      dumpTrace(name, transcoded);
+    }
     if (doesPassCallback(fakePlayer))
       pass();
   });
@@ -1047,41 +1052,9 @@ FireEventSrc +=   "document.registerElement('polymer-element', {\n";
 FireEventSrc +=   "  prototype: FireEventPrototype\n";
 FireEventSrc +=   "});\n";
 
-tests['testFireEvent'] = function() {
-  var ourConsole = console;
-  var transcoded = transcode(FireEventSrc, 'testFireEvent.js');
-  console.log('transcoded: ' + transcoded);
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval(transcoded);
-
-  json.testFireEvent = fakeMaker.toJSON();
-
-  ourConsole.log('testFireEvent', JSON.parse(json.testFireEvent));
-  saveJsonData('testFireEvent', json);
-
-  dumpTrace('testFireEvent.js', transcoded);
-  return true;
-}
-
-tests['checkFireEvent'] = function() {
-  var transcoded = transcode(FireEventSrc, 'checkFireEvent.js');
-  console.log('transcoded: ' + transcoded);
-  restoreJsonData('testFireEvent', function(json) {
-    console.log('checkFireEvent playback data: ', json)
-    var fakePlayer = new FakePlayer(json);
-    window.windowProxy = fakePlayer.startingObject();
-    fakePlayer.initialize();
-    try {
-      var result = eval(transcoded);
-    } catch(e) {
-      console.error('FAILED ', e.stack || e);
-      dumpTrace('checkFireEvent.js', transcoded);
-    }
-    if (isSame('code-mirror', windowProxy.testFireEvent))
-          pass();
-  });
-};
+createTests('testFireEvent', FireEventSrc, function() {
+  return isSame('code-mirror', windowProxy.testFireEvent);
+});
 
 var UndefinedProtoSrc = "(function() {var proto = HTMLElement.prototype;\n";
 UndefinedProtoSrc +=  "window.testUndefinedProto = 0;"
