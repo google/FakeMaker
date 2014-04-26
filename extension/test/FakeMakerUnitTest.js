@@ -1011,36 +1011,12 @@ UpgradeCallbackSrc +=   "document.registerElement('polymer-element', {\n";
 UpgradeCallbackSrc +=   "  prototype: UpgradePrototype\n";
 UpgradeCallbackSrc +=   "});\n";
 
-tests['testUpgradeCallback'] = function() {
-  var ourConsole = console;
-  var transcoded = transcode(UpgradeCallbackSrc, 'testUpgradeCallback.js');
-  console.log('transcoded: ' + transcoded);
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval(transcoded);
-
-  json.testUpgradeCallback = fakeMaker.toJSON();
-
-  ourConsole.log('testUpgradeCallback', JSON.parse(json.testUpgradeCallback));
-  saveJsonData('testUpgradeCallback', json);
-  return true;
-}
-
-tests['checkUpgradeCallback'] = function() {
-  var transcoded = transcode(UpgradeCallbackSrc, 'checkUpgradeCallback.js');
-  console.log('transcoded: ' + transcoded);
-  restoreJsonData('testUpgradeCallback', function(json) {
-    console.log('checkUpgradeCallback playback data: ', json)
-    var fakePlayer = new FakePlayer(json);
-    window.windowProxy = fakePlayer.startingObject();
-    fakePlayer.initialize();
-    var result = eval(transcoded);
-    if (isSame('code-mirror', windowProxy.testUpgradeCallback))
-          pass();
-  });
-};
+createTests('testUpgradeCallback', UpgradeCallbackSrc,function() {
+  return isSame('code-mirror', windowProxy.testUpgradeCallback);
+});
 
 var UpgradeDeepSrc = "var UpgradePrototype = Object.create(HTMLElement.prototype);\n";
+UpgradeDeepSrc +=   "console.assert(UpgradePrototype.__proto__ === HTMLElement.prototype);\n";
 UpgradeDeepSrc +=   "UpgradePrototype.createdCallback = function() {\n";
 UpgradeDeepSrc +=   "    console.assert(this.__proto__.__proto__ === HTMLElement.prototype);\n";
 UpgradeDeepSrc +=   "    console.log('this', this.getAttribute('name'));\n";
@@ -1053,40 +1029,9 @@ UpgradeDeepSrc +=   "document.registerElement('polymer-element', {\n";
 UpgradeDeepSrc +=   "  prototype: UpgradePrototype\n";
 UpgradeDeepSrc +=   "});\n";
 
-tests['testUpgradeDeep'] = function() {
-  var ourConsole = console;
-  var transcoded = transcode(UpgradeDeepSrc, 'testUpgradeDeep.js');
-  console.log('transcoded: ' + transcoded);
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval(transcoded);
-
-  json.testUpgradeDeep = fakeMaker.toJSON();
-
-  ourConsole.log('testUpgradeDeep', JSON.parse(json.testUpgradeDeep));
-  saveJsonData('testUpgradeDeep', json);
-
-  dumpTrace('testUpgradeDeep.js', transcoded);
-  return true;
-}
-
-tests['checkUpgradeDeep'] = function() {
-  var transcoded = transcode(UpgradeDeepSrc, 'checkUpgradeDeep.js');
-  console.log('transcoded: ' + transcoded);
-  restoreJsonData('testUpgradeDeep', function(json) {
-    console.log('checkUpgradeDeep playback data: ', json)
-    var fakePlayer = new FakePlayer(json);
-    window.windowProxy = fakePlayer.startingObject();
-    fakePlayer.initialize();
-    try {
-      var result = eval(transcoded);
-    } catch(e) {
-        dumpTrace('checkUpgradeDeep.js', transcoded);
-    }
-    if (isSame('code-mirror', windowProxy.testUpgradeDeep))
-          pass();
-  });
-};
+createTests('testUpgradeDeep', UpgradeDeepSrc, function() {
+  return isSame('code-mirror', windowProxy.testUpgradeDeep);
+});
 
 var FireEventSrc = "var BasePrototype = Object.create(HTMLElement.prototype);\n";
 FireEventSrc +=   "BasePrototype.fire = function() {\n";

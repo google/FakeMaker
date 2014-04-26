@@ -427,7 +427,7 @@ FakeMaker.prototype = {
       // record the callback actions.
       var proxyThis = fakeMaker._getOrCreateProxyObject(this, null, path + '.this');
       if (calls_debug)
-        console.log('_proxyACallback entering callback with "this" proxyIndex ' + fakeMaker._proxiesOfObjects.indexOf(proxyThis));
+        console.log('_proxyACallback entering callback with "this" ref index ' + refThis._fake_object_ref);
       callback.apply(proxyThis, arguments);
     }
   },

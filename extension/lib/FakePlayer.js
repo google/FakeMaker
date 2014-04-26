@@ -96,6 +96,9 @@ FakePlayer.prototype = {
       if (!fnc.hasOwnProperty(prop)) {
         des = Object.getOwnPropertyDescriptor(obj, prop);
         Object.defineProperty(fnc, prop, des);
+      } else if (prop === 'prototype') {
+        // We can't reconfigure .prototype but we can over-write it.
+        fnc.prototype = obj.prototype;
       }
     });
     // update the rebuilt object into a function with properties.
@@ -250,14 +253,8 @@ FakePlayer.prototype = {
     var fakePlayer = this;
     // element has recording info, prototype has app-defined JS functions.
     // Our fake custom element needs the recording info except when there are JS function.
-    this._someProtos(prototype, function(proto) {
-      if (element.__proto__ === Object.prototype) {
-        // To avoid walking on Object.prototype, insert another layer.
-        element.__proto__ = {};
-      }
-      // Write the app-defined JS functions onto the recording object proto.
-      fakePlayer.copyOwnProperties(proto, element.__proto__);
-    }, 'createFakeCustomElement');
+    // Write the app-defined JS functions onto the recording object proto.
+    fakePlayer.copyOwnProperties(prototype, element.__proto__);
     element.__fakeCustomElement = true;
     return element;
   },
@@ -288,7 +285,8 @@ FakePlayer.prototype = {
         var createdCallback;
         FakeCommon.lifeCycleOperations.forEach(function(name) {
           if (name in options.prototype) {
-            var lifeCycleWrapper = fakePlayer.createLifeCycleWrapper(options.prototype, name)
+            var lifeCycleWrapper = fakePlayer.createLifeCycleWrapper(options.prototype, name);
+            // TODO This won't work unless the order of callbacks magically matches player.
             fakePlayer.callbacks.push(lifeCycleWrapper);
           }
         });
