@@ -456,6 +456,28 @@ FakeMaker.prototype = {
 
   // Expandos are values added to DOM globals by JS.
   // We don't want to record or proxy them.
+  shouldBeExpando: function(obj, name, indexOfProxy) {
+    if (expando_debug)
+      console.log('no existing expando ' + name + ' next look in original');
+
+    if (this._originalProperties[indexOfProxy].indexOf(name) === -1) {
+      // Not on the object when we created the proxy: is an expando.
+      var isElementId = (obj === window) && this.isElementId(name);
+      if (!isElementId) {
+        // Not a special case of an element id
+        var descriptor = Object.getOwnPropertyDescriptor(obj, name);
+        if (descriptor && descriptor.set) {
+          if (expando_debug)
+           console.log('set found setter ' + name);
+          // setters are not expandos, just ignore the set.
+          return false;
+        }
+        return true;
+      }
+    }
+    return false;
+  },
+
   registerExpando: function(obj, name) {
       var indexOfProxy = this._proxiedObjects.indexOf(obj);
       if (!(indexOfProxy !== -1))
@@ -494,21 +516,12 @@ FakeMaker.prototype = {
       return {value: obj[name]};
     }
 
-    if (expando_debug)
-      console.log('no existing expando ' + name + ' next look in original');
-
-    var isElementId = (obj === window) && this.isElementId(name);
-
-    if (this._originalProperties[indexOfProxy].indexOf(name) === -1) {
-      // Not on the object when we created the proxy: is an expando.
-      if (!isElementId) {
-        // Not a special case of an element id
-        this.registerExpando(obj, name);
-        return {value: obj[name]};
-      }
+    if (this.shouldBeExpando(obj, name, indexOfProxy)) {
+      this.registerExpando(obj, name);
+      return {value: obj[name]};
     }
     if (expando_debug)
-      console.log('expando ' + name +' was in list of originalProperties[' + indexOfProxy + '], mark access');
+      console.log(name +' not expando, was in list of originalProperties[' + indexOfProxy + '], mark access');
     this._markAccess(indexOfProxy, name);
   },
 
@@ -637,25 +650,19 @@ FakeMaker.prototype = {
     if (indexOfProxy === -1)
       throw new Error('set: No proxy for object at ' + path);
 
-    if (this._originalProperties[indexOfProxy].indexOf(name) === -1) {
-      // Not on the object when we created the proxy.
-      var isExpando = this.getExpandoProperty(obj, name);
-      if (isExpando) {
+    // Force the name to become an expando
+    var isExpando = this.getExpandoProperty(obj, name);
+    if (isExpando) {
+      if (expando_debug)
+        console.log('set found expando, set ' + name + ' to ' + typeof(value));
+      if (obj === window) {
+        this._setExpandoGlobals.push(name);
         if (expando_debug)
-          console.log('set found expando, set ' + name + ' to ' + typeof(value));
-        if (obj === window) {
-          this._setExpandoGlobals.push(name);
-          if (expando_debug)
-            console.log('set found window expando ' + name, typeof(value));
-        }
-      } else {
-        this.registerExpando(obj, name);
+          console.log('set found window expando ' + name, typeof(value));
       }
     } else {
-      if (expando_debug)
-        console.log('Not an expando ' + name + ' obj[name] set');
-      // Mark access so the property appears on our fake in the player.
-      this._markAccess(indexOfProxy, name);
+      if (this.shouldBeExpando(obj, name, indexOfProxy))
+        this.registerExpando(obj, name);
     }
   },
 

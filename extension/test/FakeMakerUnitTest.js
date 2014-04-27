@@ -144,21 +144,21 @@ tests['testGetter'] = function() {
 
 tests['testGetterSetter'] = function() {
   var fakeMaker = new FakeMaker();
-  var objWithGetter = {
+  var objWithGetterSetter = {
     get baz() {return this._baz;},
     set baz(value) { this._baz = value;},
     _baz: 9,
   };
-  var objWithGetterProxy = fakeMaker.makeFake(objWithGetter, 'testGetterSetter');
-  objWithGetter.baz = 10;
-  objWithGetterProxy.baz = 10;
-  console.assert(objWithGetterProxy.baz === objWithGetter.baz);
+  var objWithGetterSetterProxy = fakeMaker.makeFake(objWithGetterSetter, 'objWithGetterSetter');
+  objWithGetterSetter.baz = 10;
+  objWithGetterSetterProxy.baz = 10;
+  console.assert(objWithGetterSetterProxy.baz === objWithGetterSetter.baz);
 
   json.testGetterSetter = fakeMaker.toJSON();
-  console.log('objWithGetter:', JSON.parse(json.testGetterSetter));
+  console.log('objWithGetterSetter:', JSON.parse(json.testGetterSetter));
   var fakePlayer = new FakePlayer(json.testGetterSetter);
   var obj = fakePlayer.startingObject();
-  return isSame(objWithGetter.baz, obj.baz) && json;
+  return isSame(objWithGetterSetter.baz, obj.baz) && json;
 };
 
 
@@ -1286,7 +1286,7 @@ DomPrototypeAddSrc += "DOMTokenList.prototype.add = function() {;\n";
 DomPrototypeAddSrc += "    add.call(this, arguments[0]);\n";
 DomPrototypeAddSrc += "  };\n";
 DomPrototypeAddSrc += "oneTimeBindings.classList.add('foo');"
-DomPrototypeAddSrc += "window.tetDomPrototypeAdd = oneTimeBindings.classList.contains('foo');"
+DomPrototypeAddSrc += "window.testDomPrototypeAdd = oneTimeBindings.classList.contains('foo');"
 DomPrototypeAddSrc += "})();\n";
 
 createTests('testDomPrototypeAdd',DomPrototypeAddSrc, function() {
