@@ -357,39 +357,11 @@ tests['testArgumentsScoped'] = function() {
 }
 
 var GlobalsProxiedsrc = 'var proxiedTagName =  document.body.tagName;';
+var tagNameTrue = window.document.body.tagName;
 
-tests['testGlobalsProxied'] = function() {
-  var tagNameTrue = window.document.body.tagName;
-  var ourConsole = console;
-  // Transcode before creating the proxy
-  var transcoded = transcode(GlobalsProxiedsrc, 'fakeSrc.js');
-  console.log('transcoded: ' + transcoded);
-
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval(transcoded);
-
-  json.testGlobalsProxied = fakeMaker.toJSON();
-
-  ourConsole.log('testGlobalsProxied', JSON.parse(json.testGlobalsProxied));
-  saveJsonData('testGlobalsProxied', json);
-  return true;
-};
-
-tests['checkGlobalsProxied'] = function() {
-  var tagNameTrue = window.document.body.tagName;
-  var transcoded = transcode(GlobalsProxiedsrc, 'checkGlobalsProxied.js');
-  console.log('transcoded: ' + transcoded);
-  restoreJsonData('testGlobalsProxied', function(json) {
-    console.log('checkGlobalsProxied playback data: ', json)
-    var fakePlayer = new FakePlayer(json);
-    window.windowProxy = fakePlayer.startingObject();
-    fakePlayer.initialize();
-    eval(transcoded);
-    if (isSame(tagNameTrue, windowProxy.proxiedTagName))
-          pass();
-  });
-};
+createTests('testGlobalsProxied', GlobalsProxiedsrc, function() {
+  return isSame(tagNameTrue, windowProxy.proxiedTagName);
+});
 
 tests['testNewCustomEvent'] = function() {
   // Transcode before creating the proxy
@@ -1021,7 +993,10 @@ createTests('testUpgradeCallback', UpgradeCallbackSrc,function() {
 });
 
 var UpgradeDeepSrc = "var UpgradePrototype = Object.create(HTMLElement.prototype);\n";
-UpgradeDeepSrc +=   "console.assert(UpgradePrototype.__proto__ === HTMLElement.prototype);\n";
+UpgradeDeepSrc +=   "var lhs = UpgradePrototype.__proto__;\n";
+UpgradeDeepSrc +=   "console.log('---------------- lhs ', Object.getOwnPropertyNames(lhs));\n";
+UpgradeDeepSrc +=   "var rhs = HTMLElement.prototype;\n";
+UpgradeDeepSrc +=   "console.assert(lhs === rhs);\n";
 UpgradeDeepSrc +=   "UpgradePrototype.createdCallback = function() {\n";
 UpgradeDeepSrc +=   "    console.assert(this.__proto__.__proto__ === HTMLElement.prototype);\n";
 UpgradeDeepSrc +=   "    console.log('this', this.getAttribute('name'));\n";

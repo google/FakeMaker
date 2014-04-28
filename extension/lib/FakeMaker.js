@@ -511,9 +511,12 @@ FakeMaker.prototype = {
 
     var expandos = this._expandoProperties[indexOfProxy];
     if (expandos && expandos.hasOwnProperty(name)) {
+      var value = obj[name];
       if (expando_debug)
-        console.log('found expando property ' + name + ' of ' + typeof(obj[name]));
-      return {value: obj[name]};
+        console.log('found expando property ' + name + ' own: ', Object.getOwnPropertyNames(value));
+      console.log('found expando property its getPrototypeOf ', Object.getOwnPropertyNames(Object.getPrototypeOf(value)));
+      console.log('found expando property its proto ', Object.getOwnPropertyNames(value.__proto__));
+      return {value: value};
     }
 
     if (this.shouldBeExpando(obj, name, indexOfProxy)) {
@@ -658,7 +661,7 @@ FakeMaker.prototype = {
       if (obj === window) {
         this._setExpandoGlobals.push(name);
         if (expando_debug)
-          console.log('set found window expando ' + name, typeof(value));
+          console.log('set found window expando ' + name + ' isAProxy ' + this.isAProxy(value), Object.getOwnPropertyNames(value));
       }
     } else {
       if (this.shouldBeExpando(obj, name, indexOfProxy))
@@ -694,15 +697,21 @@ FakeMaker.prototype = {
         // Secret property name for debugging
         if (name === '__fakeMakerProxy')
           return true;
-        // Is this a DOM operation needed for JS to work correctly?
-       // var dontProxy = fakeMaker._dontProxy(path, obj, name);
-       // if (dontProxy)
-       //   return dontProxy;  // Yes, just let the player call it.
+
+        if (fakeMaker.isAProxy(obj))
+          throw new Error('get on proxy object');
 
         if (name === '__proto__') { // then we can't use getOwn* functions
           if (get_set_debug)
             console.log('get __proto__ at ' + path  + '.__proto__');
           var protoValue = Object.getPrototypeOf(obj);
+
+          if (protoValue && fakeMaker.isAProxy(protoValue))
+            console.log('__proto__ isAProxy yea baby')
+          else
+            console.log('__proto__ own properties ', Object.getOwnPropertyNames(protoValue));
+          console.log('obj own ',  Object.getOwnPropertyNames(obj));
+
           if (protoValue)
             return fakeMaker._getOrCreateProxyObject(protoValue, obj, path, path + '.__proto__');
           else
@@ -712,9 +721,6 @@ FakeMaker.prototype = {
         var result = fakeMaker.getExpandoProperty(obj, name);
         if (result)
           return result.value; // Yes, then player need not know about it.
-
-        if (fakeMaker.isAProxy(obj))
-          throw new Error('get on proxy object');
 
         if (get_set_debug) {
           console.log('get ' + name + ' obj === window: ' + (obj === window),
@@ -795,7 +801,7 @@ FakeMaker.prototype = {
 
       set: function(target, name, value, receiver) {
         fakeMaker._preSet(obj, name, value);
-        obj[name] = value;
+        Reflect.set(obj, name, value);
         return true;
       },
 
