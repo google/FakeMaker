@@ -992,6 +992,16 @@ createTests('testUpgradeCallback', UpgradeCallbackSrc,function() {
   return isSame('code-mirror', windowProxy.testUpgradeCallback);
 });
 
+var objectCreateSrc = "var objectCreated = Object.create(HTMLElement.prototype);\n";
+objectCreateSrc +=   "var lhs = objectCreated.__proto__;\n";
+objectCreateSrc +=   "var rhs = HTMLElement.prototype;\n";
+objectCreateSrc +=   "window.testObjectCreated = (lhs === rhs);\n";
+
+createTests('testObjectCreated', objectCreateSrc, function() {
+  return isSame(windowProxy.testObjectCreated, true);
+});
+
+
 var UpgradeDeepSrc = "var UpgradePrototype = Object.create(HTMLElement.prototype);\n";
 UpgradeDeepSrc +=   "var lhs = UpgradePrototype.__proto__;\n";
 UpgradeDeepSrc +=   "console.log('---------------- lhs ', Object.getOwnPropertyNames(lhs));\n";

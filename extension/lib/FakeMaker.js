@@ -512,10 +512,8 @@ FakeMaker.prototype = {
     var expandos = this._expandoProperties[indexOfProxy];
     if (expandos && expandos.hasOwnProperty(name)) {
       var value = obj[name];
-      if (expando_debug)
+      if (expando_debug && value && (typeof value === 'object') && !this.isAProxy(value))
         console.log('found expando property ' + name + ' own: ', Object.getOwnPropertyNames(value));
-      console.log('found expando property its getPrototypeOf ', Object.getOwnPropertyNames(Object.getPrototypeOf(value)));
-      console.log('found expando property its proto ', Object.getOwnPropertyNames(value.__proto__));
       return {value: value};
     }
 
@@ -660,7 +658,7 @@ FakeMaker.prototype = {
         console.log('set found expando, set ' + name + ' to ' + typeof(value));
       if (obj === window) {
         this._setExpandoGlobals.push(name);
-        if (expando_debug)
+        if (expando_debug && typeof value === 'object' && !this.isAProxy(value))
           console.log('set found window expando ' + name + ' isAProxy ' + this.isAProxy(value), Object.getOwnPropertyNames(value));
       }
     } else {
@@ -692,6 +690,7 @@ FakeMaker.prototype = {
 
       // target[name] or getter
       get: function(target, name, receiver) { // target is bound to the shadow object
+        console.log("get " + name + " begins >>>>>");
         if (typeof obj === 'function' && name === 'name')
           throw new Error('get typeof function name === \'name\'');
         // Secret property name for debugging
@@ -711,7 +710,7 @@ FakeMaker.prototype = {
           else
             console.log('__proto__ own properties ', Object.getOwnPropertyNames(protoValue));
           console.log('obj own ',  Object.getOwnPropertyNames(obj));
-
+console.log("get " + name + " returns <<<<")
           if (protoValue)
             return fakeMaker._getOrCreateProxyObject(protoValue, obj, path, path + '.__proto__');
           else
@@ -719,8 +718,10 @@ FakeMaker.prototype = {
         }
         // Was this property written by JS onto obj?
         var result = fakeMaker.getExpandoProperty(obj, name);
-        if (result)
+        if (result) {
+          console.log("get " + name + " returns <<<<")
           return result.value; // Yes, then player need not know about it.
+        }
 
         if (get_set_debug) {
           console.log('get ' + name + ' obj === window: ' + (obj === window),
@@ -751,7 +752,7 @@ FakeMaker.prototype = {
           fakeMaker._functionProxiesThatTakeCallbackArgs.push(result);
           fakeMaker._callbackArgHandlers.push(fakeMaker._DOMFunctionsThatCallback[name].bind(fakeMaker));
         }
-
+        console.log("get " + name + " returns <<<<")
         return result;
       },
 
@@ -800,8 +801,12 @@ FakeMaker.prototype = {
       },
 
       set: function(target, name, value, receiver) {
+        console.log("set " + name + " begins >>>>>");
         fakeMaker._preSet(obj, name, value);
-        Reflect.set(obj, name, value);
+        obj[name] = value;
+        if (name === 'fontStyle')
+          console.log('set fontStyle to ' + value);
+        console.log("set " + name + " returns <<<<<");
         return true;
       },
 

@@ -345,7 +345,7 @@ FakePlayer.prototype = {
       var propertyRep = objRep[name];
       if (propertyRep._fake_function_) {
         // Write over the unnamed entry with a named version.
-        var fnc = this.createFunctionObject(propertyRep, name, '');
+        var fnc = fakePlayer.createFunctionObject(propertyRep, name, '');
         fakePlayer._rebuiltObjects[propertyRep._fake_object_ref] = fnc;
       }
     });
