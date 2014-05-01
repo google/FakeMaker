@@ -708,7 +708,7 @@ FakeMaker.prototype = {
           if (protoValue && fakeMaker.isAProxy(protoValue))
             console.log('__proto__ isAProxy yea baby')
           else
-            console.log('__proto__ own properties ', Object.getOwnPropertyNames(protoValue));
+            console.log('__proto__ own properties ', protoValue && Object.getOwnPropertyNames(protoValue));
           console.log('obj own ',  Object.getOwnPropertyNames(obj));
 console.log("get " + name + " returns <<<<")
           if (protoValue)
