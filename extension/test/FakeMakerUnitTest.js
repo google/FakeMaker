@@ -20,6 +20,7 @@ function testFakeMaker(src, name) {
   var ourConsole = console;
   // Transcode before creating the proxy
   var transcoded = transcode(src, name + '.js');
+  console.log('src: ', src);
   console.log('transcoded: ' + transcoded);
   var fakeMaker = new FakeMaker();
   windowProxy = fakeMaker.makeFakeWindow();
@@ -31,6 +32,7 @@ function testFakeMaker(src, name) {
 
 function testPlayback(src, name, doesPassCallback) {
   var transcoded = transcode(src, 'playback' + name + '.js');
+  console.log('src: ', src);
   console.log('transcoded: ' + transcoded);
   restoreJsonData(name, function(json) {
     console.log('playback ' + name + ' data: ', JSON.parse(json));
@@ -222,28 +224,19 @@ tests['testMethodOnSubObject'] = function() {
   return isSame(objWithMethodOnSubObject.foo.baz(), fakePlayer.startingObject().foo.baz()) && json;
 };
 
-tests['testProto'] = function() {
-  var fakeMaker = new FakeMaker();
-  function Foo() {};
-  Foo.prototype = {
-    baz: function() {
-      return 4;
-    }
-  };
-  var objWithPrototype = new Foo();
-  var objWithPrototypeProxy = fakeMaker.makeFake(objWithPrototype, 'objWithPrototype');
-  console.assert(objWithPrototypeProxy.baz() === objWithPrototype.baz());
-  var theProto = objWithPrototypeProxy.__proto__;
-  console.assert(theProto.baz);
+var PrototypeSrc = 'function Foo() {};\n';
+PrototypeSrc += 'Foo.prototype = {\n';
+PrototypeSrc += '  baz: function() {\n';
+PrototypeSrc += '    return 4;\n';
+PrototypeSrc += '  }\n';
+PrototypeSrc += '};\n';
+PrototypeSrc += 'var objWithPrototype = new Foo();\n';
+PrototypeSrc += 'var theProto = objWithPrototype.__proto__;\n';
+PrototypeSrc += 'testTheProto = typeof theProto.baz;\n';
 
-  json.testProto = fakeMaker.toJSON();
-  console.log('objWithPrototype:', JSON.parse(json.testProto));
-  var fakePlayer = new FakePlayer(json.testProto);
-  var start = fakePlayer.startingObject();
-  var step1 = start.baz();
-  var step2 = start.__proto__.baz;
-  return isSame(typeof step2, 'function') && json;
-};
+createTests('testProto', PrototypeSrc, function() {
+  return isSame('function', windowProxy.testTheProto);
+});
 
 tests['testDOMObjectProperty'] = function() {
   var fakeMaker = new FakeMaker();
@@ -387,26 +380,15 @@ tests['testNewCustomEvent'] = function() {
   return json;
 }
 
-tests['testWindowDispatchEvent'] = function() {
-  var tagNameTrue = window.document.body.tagName;
-  var ourConsole = console;
-  // Transcode before creating the proxy
-  var src = "window.dispatchEvent(new CustomEvent('TestWebComponentsReady'));";
-  var transcoded = transcode(src, 'fakeSrc.js');
-  console.log('transcoded: ' + transcoded);
+var dispatchEventSrc = "window.addEventListener('TestWebComponentsReady', function() {\n";
+dispatchEventSrc += " window.testWindowDispatchEvent = true;\n";
+dispatchEventSrc += "});\n";
+dispatchEventSrc += "window.dispatchEvent(new CustomEvent('TestWebComponentsReady'));\n";
 
-  window.addEventListener('TestWebComponentsReady', pass);
+createTests('testWindowDispatchEvent', dispatchEventSrc, function() {
+  return isSame(true, windowProxy.testWindowDispatchEvent);
+});
 
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval(transcoded);
-
-  json.testWindowDispatchEvent = fakeMaker.toJSON();
-
-  ourConsole.log('windowDispatchEvent', JSON.parse(json.testWindowDispatchEvent));
-  var fakePlayer = new FakePlayer(json.testWindowDispatchEvent);
-  return json;
-};
 
 tests['testPrototype'] = function() {
   var ourConsole = console;
@@ -857,40 +839,17 @@ createTests('testElementId', ElementIdsrc, function() {
 });
 
 var  BuiltInFunctionPropertysrc = '';
-BuiltInFunctionPropertysrc += '(function(global) {var hasIt = typeof HTMLTemplateElement !== "undefined";\n';
+BuiltInFunctionPropertysrc += '(function(global) {\n';
+BuiltInFunctionPropertysrc += '  var hasIt = typeof HTMLTemplateElement !== "undefined";\n';
 BuiltInFunctionPropertysrc += 'HTMLTemplateElement.decorate = function(el, opt_instanceRef) {\n';
 BuiltInFunctionPropertysrc += '  return true;\n';
-BuiltInFunctionPropertysrc += '};window.testBuiltInFunctionProperty = HTMLTemplateElement.decorate();\n})(window);\n';
+BuiltInFunctionPropertysrc += '};\n';
+BuiltInFunctionPropertysrc += 'window.testBuiltInFunctionProperty = HTMLTemplateElement.decorate();\n';
+BuiltInFunctionPropertysrc += '})(window);\n';
 
-tests['testBuiltInFunctionProperty'] = function() {
-  var ourConsole = console;
-  var transcoded = transcode(BuiltInFunctionPropertysrc, 'testBuiltInFunctionProperty');
-  console.log('transcoded: ' + transcoded);
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval(transcoded);
-
-  json.testBuiltInFunctionProperty = fakeMaker.toJSON();
-
-  ourConsole.log('testBuiltInFunctionProperty', JSON.parse(json.testBuiltInFunctionProperty));
-  saveJsonData('testBuiltInFunctionProperty', json);
-  return true;
-}
-
-tests['checkBuiltInFunctionProperty'] = function() {
-  var transcoded = transcode(BuiltInFunctionPropertysrc, 'checkBuiltInFunctionProperty.js');
-  console.log('transcoded: ' + transcoded);
-  restoreJsonData('testBuiltInFunctionProperty', function(json) {
-    console.log('checkBuiltInFunctionProperty playback data: ', json)
-    var fakePlayer = new FakePlayer(json);
-    window.windowProxy = fakePlayer.startingObject();
-    fakePlayer.initialize();
-    eval(transcoded);
-    if (isSame(true, windowProxy.testBuiltInFunctionProperty))
-          pass();
-  });
-};
-
+createTests('testBuiltInFunctionProperty', BuiltInFunctionPropertysrc, function() {
+  return isSame(true, windowProxy.testBuiltInFunctionProperty);
+});
 
 var ProtoPropertiesSrc = "var AnotherPrototype = Object.create(HTMLElement.prototype);\n";
 ProtoPropertiesSrc += "window.preTestProtoProperties = AnotherPrototype.__proto__;"
