@@ -5,21 +5,32 @@
 	var aPrototype = {foo: 'foo'};
 	var handler = {
 		get: function(target, name, receiver) {
-			if (name === '__proto__') {
-				console.log('get ' + name + ' return target');
-				return target;
-			} else {
-				console.log('get ' + name);
-				return target[name];
-			}
+			console.log('   (Proxy handler \'get\' called for name = ' + name + ')');
+			return target[name];
 		}
 	};
 	var aProxy = Proxy(aPrototype, handler);
-	var created = Object.create(aProxy);
-	console.log('created.__proto__', created.__proto__);
+	var hasProxyAsProto = Object.create(aProxy);
+	console.log('hasProxyAsProto.__proto__: ', 
+		hasProxyAsProto.__proto__);
 
-	console.log('created.__proto__ === aProxy ', created.__proto__ === aProxy);
-	console.log('Object.getPrototypeOf(created) === aProxy ', Object.getPrototypeOf(created) === aProxy);
-	console.log('aProxy.__proto__ ', aProxy.__proto__)
+	console.log('hasProxyAsProto.__proto__ === aProxy ', 
+		hasProxyAsProto.__proto__ === aProxy);
+	console.log('Object.getPrototypeOf(hasProxyAsProto) === aProxy ', 
+		Object.getPrototypeOf(hasProxyAsProto) === aProxy);
+	console.log('hasProxyAsProto.__proto__ === aProxy.__proto__ ', 
+		hasProxyAsProto.__proto__ === aProxy.__proto__);
+
+	console.log('--- Contrast with non-proxy results: ---')
+	var hasAPrototypeAsProto = Object.create(aPrototype);
+	console.log('hasAPrototypeAsProto.__proto__', 
+		hasAPrototypeAsProto.__proto__);
+	console.log('hasAPrototypeAsProto.__proto__ === aPrototype ', 
+		hasAPrototypeAsProto.__proto__ === aPrototype);
+	console.log('Object.getPrototypeOf(hasAPrototypeAsProto) === aPrototype ', 
+		Object.getPrototypeOf(hasAPrototypeAsProto) === aPrototype);
+	console.log('hasAPrototypeAsProto.__proto__ === aPrototype.__proto__ ', 
+		hasAPrototypeAsProto.__proto__ === aPrototype.__proto__);
+
 })();
 </script>
