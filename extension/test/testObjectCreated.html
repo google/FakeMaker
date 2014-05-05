@@ -1,0 +1,25 @@
+<script src="../third_party/harmony-reflect/reflect.js"></script>
+
+<script name="testObjectCreate">
+(function() {
+	var aPrototype = {foo: 'foo'};
+	var handler = {
+		get: function(target, name, receiver) {
+			if (name === '__proto__') {
+				console.log('get ' + name + ' return target');
+				return target;
+			} else {
+				console.log('get ' + name);
+				return target[name];
+			}
+		}
+	};
+	var aProxy = Proxy(aPrototype, handler);
+	var created = Object.create(aProxy);
+	console.log('created.__proto__', created.__proto__);
+
+	console.log('created.__proto__ === aProxy ', created.__proto__ === aProxy);
+	console.log('Object.getPrototypeOf(created) === aProxy ', Object.getPrototypeOf(created) === aProxy);
+	console.log('aProxy.__proto__ ', aProxy.__proto__)
+})();
+</script>

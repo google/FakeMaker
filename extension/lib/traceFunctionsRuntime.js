@@ -40,6 +40,6 @@ window.__F_ = {
     __F_.trace(sourceId, offset);
   },
   trace: function(sourceId, offset) {
-    console.log('__F_ ' + this.calls.length + ': ' + offset + '@' + this.urls[sourceId]);
+    console.log('__F_ ' + (this.calls.length - 1) + ': ' + offset + '@' + this.urls[sourceId]);
   }
 };

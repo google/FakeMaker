@@ -841,10 +841,11 @@ createTests('testElementId', ElementIdsrc, function() {
 var  BuiltInFunctionPropertysrc = '';
 BuiltInFunctionPropertysrc += '(function(global) {\n';
 BuiltInFunctionPropertysrc += '  var hasIt = typeof HTMLTemplateElement !== "undefined";\n';
-BuiltInFunctionPropertysrc += 'HTMLTemplateElement.decorate = function(el, opt_instanceRef) {\n';
-BuiltInFunctionPropertysrc += '  return true;\n';
-BuiltInFunctionPropertysrc += '};\n';
-BuiltInFunctionPropertysrc += 'window.testBuiltInFunctionProperty = HTMLTemplateElement.decorate();\n';
+BuiltInFunctionPropertysrc += '  console.assert(hasIt);\n';
+BuiltInFunctionPropertysrc += '  HTMLTemplateElement.decorate = function(el, opt_instanceRef) {\n';
+BuiltInFunctionPropertysrc += '    return true;\n';
+BuiltInFunctionPropertysrc += '  };\n';
+BuiltInFunctionPropertysrc += '  window.testBuiltInFunctionProperty = HTMLTemplateElement.decorate();\n';
 BuiltInFunctionPropertysrc += '})(window);\n';
 
 createTests('testBuiltInFunctionProperty', BuiltInFunctionPropertysrc, function() {
@@ -951,20 +952,25 @@ createTests('testUpgradeCallback', UpgradeCallbackSrc,function() {
   return isSame('code-mirror', windowProxy.testUpgradeCallback);
 });
 
-var objectCreateSrc = "var objectCreated = Object.create(HTMLElement.prototype);\n";
-objectCreateSrc +=   "var lhs = objectCreated.__proto__;\n";
-objectCreateSrc +=   "var rhs = HTMLElement.prototype;\n";
-objectCreateSrc +=   "window.testObjectCreated = (lhs === rhs);\n";
+var objectCreateSrc = "(function() {\n";
+objectCreateSrc +=  "  var objectCreated = Object.create(HTMLElement.prototype);\n";
+objectCreateSrc +=  "  var lhs = objectCreated.__proto__;\n";
+objectCreateSrc +=  "  var rhs = HTMLElement.prototype;\n";
+objectCreateSrc +=  "console.assert(lhs === rhs);\n";
+objectCreateSrc +=  "  window.testObjectCreated = (lhs === rhs);\n";
+objectCreateSrc +=  "}())\n";
 
 createTests('testObjectCreated', objectCreateSrc, function() {
   return isSame(windowProxy.testObjectCreated, true);
 });
 
 
-var UpgradeDeepSrc = "var UpgradePrototype = Object.create(HTMLElement.prototype);\n";
+var UpgradeDeepSrc = "(function() {\n";
+UpgradeDeepSrc += "var UpgradePrototype = Object.create(HTMLElement.prototype);\n";
 UpgradeDeepSrc +=   "var lhs = UpgradePrototype.__proto__;\n";
-UpgradeDeepSrc +=   "console.log('---------------- lhs ', Object.getOwnPropertyNames(lhs));\n";
+UpgradeDeepSrc +=   "//console.log('---------------- lhs ', Object.getOwnPropertyNames(lhs));\n";
 UpgradeDeepSrc +=   "var rhs = HTMLElement.prototype;\n";
+UpgradeDeepSrc +=   "//console.log('---------------- rhs ', Object.getOwnPropertyNames(rhs));\n";
 UpgradeDeepSrc +=   "console.assert(lhs === rhs);\n";
 UpgradeDeepSrc +=   "UpgradePrototype.createdCallback = function() {\n";
 UpgradeDeepSrc +=   "    console.assert(this.__proto__.__proto__ === HTMLElement.prototype);\n";
@@ -977,6 +983,7 @@ UpgradeDeepSrc +=   "}\n";
 UpgradeDeepSrc +=   "document.registerElement('polymer-element', {\n";
 UpgradeDeepSrc +=   "  prototype: UpgradePrototype\n";
 UpgradeDeepSrc +=   "});\n";
+UpgradeDeepSrc +=   "}());\n";
 
 createTests('testUpgradeDeep', UpgradeDeepSrc, function() {
   return isSame('code-mirror', windowProxy.testUpgradeDeep);

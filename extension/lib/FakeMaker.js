@@ -45,7 +45,6 @@ function FakeMaker() {
   // Co-indexed
   this._proxiedObjects = [];
   this._proxiesOfObjects = [];
-  this._proxiedObjectRecievers = [];
   this._expandoProperties = [];
   this._originalProperties = []; // object keys when proxy first created.
   this._setExpandoGlobals = [];
@@ -196,7 +195,7 @@ FakeMaker.prototype = {
         case 'object':
         case 'function':
           window[name] =
-            this._getOrCreateProxyObject(window[name], window[name], 'window.'+name);
+            this._getOrCreateProxyObject(window[name], window, 'window.'+name);
           break;
         default:
           break;
@@ -237,23 +236,19 @@ FakeMaker.prototype = {
   // Objects map uniquely to a proxy: create map entry.
   _registerProxyObject: function(obj, theThis, proxy) {
     this._proxiedObjects.push(obj);
-    this._proxiedObjectRecievers.push(theThis);  // TODO remove and arg also
     this._proxiesOfObjects.push(proxy);
     return this._proxiesOfObjects.length - 1;
   },
 
   // Objects map uniquely to a proxy: lookup map entry.
-  _lookupProxyObject: function(obj, theThis, path) {
+  _lookupProxyObject: function(obj, path) {
     var index = this._proxiedObjects.indexOf(obj);
     if (index !== -1) {
-      if (typeof obj === 'object' || !theThis ||
-        theThis === this._proxiedObjectRecievers[index]) {
-        if (recording_debug) {
-              console.log('_lookupProxyObject found index: ' +
-                index + ', typeof: ' + (typeof obj) + ' at ' + path);
-        }
-        return this._proxiesOfObjects[index];
+      if (recording_debug) {
+        console.log('_lookupProxyObject found index: ' +
+            index + ', typeof: ' + (typeof obj) + ' at ' + path);
       }
+      return this._proxiesOfObjects[index];
     }
     index = this._proxiesOfObjects.indexOf(obj);
     if (index !== -1) {  // The object is a proxy.
@@ -356,7 +351,7 @@ FakeMaker.prototype = {
       throw new Error('Builtin Object seen on path');
     if (!obj)
       return obj; // typeof null === 'object'
-    return this._lookupProxyObject(obj, theThis, path) ||
+    return this._lookupProxyObject(obj, path) ||
         this._createProxyObject(obj, theThis, path);
   },
 
@@ -457,7 +452,8 @@ FakeMaker.prototype = {
   // We don't want to record or proxy them.
   shouldBeExpando: function(obj, ownsName, name, indexOfProxy) {
     if (expando_debug)
-      console.log('no existing expando ' + name + ' next look in original');
+      console.log('no existing expando ' + name + ' next look in ' +
+        this._originalProperties[indexOfProxy].length + ' originalProperties at index ' + indexOfProxy);
 
     if (this._originalProperties[indexOfProxy].indexOf(name) !== -1)
       return false;
@@ -491,8 +487,8 @@ FakeMaker.prototype = {
       }
   },
 
-  getExpandoProperty: function(obj, ownsName, name, path) {
-    var proxy = this._getOrCreateProxyObject(ownsName, obj, path);
+  getExpandoProperty: function(obj, ownsName, name, receiver, path) {
+    var proxy = this._getOrCreateProxyObject(ownsName, receiver, path);
     var indexOfProxy = this._proxiesOfObjects.indexOf(proxy);
     if (expando_debug)
       console.log('looking for expando ' + name + ' in ownsName at index ' + indexOfProxy);
@@ -514,6 +510,8 @@ FakeMaker.prototype = {
     }
 
     if (this.shouldBeExpando(obj, ownsName, name, indexOfProxy)) {
+      if (expando_debug)
+        console.log('getExpandoProperty ' + name + ' shouldBeExpando ')
       this.registerExpando(ownsName, name);
       return {value: ownsName[name]};
     }
@@ -640,7 +638,7 @@ FakeMaker.prototype = {
     return result;
   },
 
-  _preSet: function(obj, name, value, path) {
+  _preSet: function(obj, name, value, receiver, path) {
     // In set/defineProperty we don't want to wrap the value, just
     // record that it was set in case JS code later reads it.
     var indexOfProxy = this._proxiedObjects.indexOf(obj);
@@ -648,7 +646,7 @@ FakeMaker.prototype = {
       throw new Error('set: No proxy for object at ' + path);
 
     // Force the name to become an expando
-    var isExpando = this.getExpandoProperty(obj, obj, name, path + 'set.' + name);
+    var isExpando = this.getExpandoProperty(obj, obj, name, receiver, path + 'set.');
     if (isExpando) {
       if (expando_debug)
         console.log('set found expando, set ' + name + ' to ' + typeof(value));
@@ -698,7 +696,7 @@ FakeMaker.prototype = {
 
         if (name === '__proto__') { // then we can't use getOwn* functions
           if (get_set_debug)
-            console.log('get __proto__ at ' + path  + '.__proto__');
+            console.log('get __proto__ at ' + path);
           var protoValue = Object.getPrototypeOf(obj);
 
           if (protoValue && fakeMaker.isAProxy(protoValue))
@@ -708,7 +706,7 @@ FakeMaker.prototype = {
           console.log('obj own ',  Object.getOwnPropertyNames(obj));
 console.log("get " + name + " returns <<<<")
           if (protoValue)
-            return fakeMaker._getOrCreateProxyObject(protoValue, obj, path, path + '.__proto__');
+            return fakeMaker._getOrCreateProxyObject(protoValue, null, path, path + '.__proto__');
           else
             return fakeMaker._wrapReturnValue(protoValue, obj, path  + '.__proto__');
         }
@@ -723,21 +721,23 @@ console.log("get " + name + " returns <<<<")
 
         var descriptor;
         var ownsName;
+        var ownsNamePath;
         fakeMaker._someProtos(obj, function(proto) {
           ownsName = proto;
+          ownsNamePath = ownsNamePath ? ownsNamePath + '.__proto__' : path;
           return descriptor = Object.getOwnPropertyDescriptor(ownsName, name);
         }, path);
 
-        if (get_set_debug) console.log('get descriptor ' + name, descriptor);
+        if (get_set_debug) console.log('got descriptor ' + name + ' from ' + ownsNamePath);
 
         // Was this property written by JS onto obj?
-        var result = fakeMaker.getExpandoProperty(obj, ownsName, name, path + '.' + name);
+        var result = fakeMaker.getExpandoProperty(obj, ownsName, name, receiver, ownsNamePath);
         if (result) {
-          console.log("get " + name + " returns expando <<<<")
+          console.log("get " + name + " returns expando <<<< at " + ownsNamePath + ' isAProxy ' + fakeMaker.isAProxy(result.value));
           return result.value; // Yes, then player need not know about it.
         }
 
-        var result = fakeMaker._getFromPropertyDescriptor(obj, target, name, receiver, descriptor, ownsName, path);
+        var result = fakeMaker._getFromPropertyDescriptor(obj, target, name, receiver, descriptor, ownsName, ownsNamePath);
 
         // '.apply()' will need to process some functions for callbacks before they go into the DOM. But it does not
         // know the name of the function it will call. So we check the name here and mark the shadow/target for apply
@@ -771,7 +771,7 @@ console.log("get " + name + " returns <<<<")
         }
 
         // Was this property written by JS onto obj?
-        var result = fakeMaker.getExpandoProperty(obj, obj, name, path + '.getOwnPropertyDescriptor.' + name);
+        var result = fakeMaker.getExpandoProperty(obj, obj, name, receiver, path + '.getOwnPropertyDescriptor.');
         if (get_set_debug)
           console.log('getOwnPropertyDescriptor ' + name + ' is expando ' + !!result);
         if (result) {
@@ -799,7 +799,7 @@ console.log("get " + name + " returns <<<<")
 
       set: function(target, name, value, receiver) {
         console.log("set " + name + " begins >>>>>");
-        fakeMaker._preSet(obj, name, value, path + '.set(' + name + ')');
+        fakeMaker._preSet(obj, name, value, receiver, path + '.set(' + name + ')');
         obj[name] = value;
         if (name === 'fontStyle')
           console.log('set fontStyle to ' + value);
@@ -810,7 +810,7 @@ console.log("get " + name + " returns <<<<")
       defineProperty: function(target, name, desc) {
         if (get_set_debug)
           console.log('defineProperty ' + name + ' at ' + path);
-        fakeMaker._preSet(obj, name, desc.value, path + '.defineProperty(' + name + ')');
+        fakeMaker._preSet(obj, name, desc.value, null, path + '.defineProperty(' + name + ')');
         var result = Object.defineProperty(obj, name, desc);
         // Write a descriptor on the target.
         // Use the just-changed value of the obj descriptor, since the 'defineProperty' is really 'update properties'
@@ -910,7 +910,7 @@ console.log("get " + name + " returns <<<<")
         return result;
       },
       setPrototypeOf: function(target, newProto) {
-        fakeMaker._preSet(obj, '__proto__', newProto, path + '.setPrototypeOf');
+        fakeMaker._preSet(obj, '__proto__', newProto, null, path + '.setPrototypeOf');
         return Reflect.setPrototypeOf(obj, newProto);
       },
       deleteProperty: function(target, name) {
@@ -931,7 +931,7 @@ console.log("get " + name + " returns <<<<")
       preventExtensions: function(target) {
         // Forward only.
         var result = Reflect.preventExtensions(obj);
-        return fakeMaker._lookupProxyObject(result, result, path);
+        return fakeMaker._lookupProxyObject(result, path);
       },
       isExtensible: function(target) {
         var result = Reflect.isExtensible(obj);
@@ -950,8 +950,6 @@ console.log("get " + name + " returns <<<<")
 
     var proxy = Proxy(shadow,  proxyImpl);
 
-    if (maker_debug)
-      console.log('Accumulate originalProperties ' + path);
     // Accumulate the property names on the original object before registering
     // our new object as proxied.
     var originalProperties = [];
@@ -963,14 +961,10 @@ console.log("get " + name + " returns <<<<")
         console.log(attributesName + ' found ', originalProperties)
     }
 
-    fakeMaker._someProtos(obj, function(proto) {
-      if (fakeMaker._expandoPrototypes.indexOf(proto) !== -1) {
-        if (maker_debug)
-          console.log('Do not add originalProperties found in  _expandoPrototypes ' + path + ', skipping ' + Object.getOwnPropertyNames(proto).join(','));
-        return;
-      }
-      originalProperties = originalProperties.concat(Object.getOwnPropertyNames(proto));
-    }, path);
+    originalProperties = originalProperties.concat(Object.getOwnPropertyNames(obj));
+
+    if (maker_debug)
+      console.log('Accumulated ' + originalProperties.length + ' originalProperties ' + path);
 
     var indexOfProxy = this._registerProxyObject(obj, theThis, proxy);
     this._originalProperties[indexOfProxy] = originalProperties;

@@ -52,6 +52,8 @@ Object.keys(tests).forEach(function(test) {
 });
 list.addEventListener('click', function(event) {
   console.log('click', event.target.textContent);
+  clearAll();
+  runAll = false;
   nextTest = Array.prototype.indexOf.call(list.children, event.target);
   loadNextTest();
 });
