@@ -507,7 +507,7 @@ FakeMaker.prototype = {
 
     var expandos = this._expandoProperties[indexOfProxy];
     if (expandos && expandos.hasOwnProperty(name)) {
-      var value = Reflect.get(obj, name, receiver);
+      var value = Reflect.get(obj, name, this.deproxyArg(receiver));
       if (expando_debug && value && (typeof value === 'object') && !this.isAProxy(value))
         console.log('found expando property ' + name + ' own: ', Object.getOwnPropertyNames(value));
       return {value: value};
@@ -591,7 +591,7 @@ FakeMaker.prototype = {
         console.log('_getFromPropertyDescriptor ' + name + ': undefined ' + path);
     } else if (descriptor.get) {
       this.stopRecording(path);
-      var value = Reflect.get(obj, name, receiver);
+      var value = Reflect.get(obj, name, this.deproxyArg(receiver));
       this.startRecording(path);
       result = this._wrapCallResult(value, obj, path + '.' + name);
       if (get_set_debug)
@@ -768,7 +768,7 @@ console.log("get " + name + " returns <<<<")
         if (!fakeMaker.isAProxy(proto)) {
           protoProxy = fakeMaker._getOrCreateProxyObject(proto, receiver, path + '.getPrototypeOf');
         }
-        return Reflect.get(protoProxy, name, receiver);
+        return Reflect.get(protoProxy, name, fakeMaker.deproxyArg(receiver));
       },
 
       has: function(target, name) {
