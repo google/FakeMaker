@@ -29,30 +29,29 @@ FakePlayer.prototype = {
   initialize: function() {
     // Add the properties created on window by the app so they appear as globals,
     // but delay their access to the recording until the app calls for them.
-    this.getRootExpandoNames().forEach(function(name) {
+    /* this.getRootExpandoNames().forEach(function(name) {
       if (debug_player) {
         console.log('applyFakePlayer checking ' + name +
           ' in window: ' + (name in windowProxy))
       }
-      if (!(name in window)) {
-        Object.defineProperty(window, name, {
-            configurable: true,
-          get: function() {
-            return window.windowProxy[name];
-          },
-          set: function(value) {
-            if (debug_player)
-              console.warn('fakePlayer ignores set call for ' + name);
-          }
-        });
-        if (debug_player)
-          console.log('FakePlayer.initialize: add forwarding getter for ' + name);
-      }
-    });
+      Object.defineProperty(windowProxy, name, {
+          configurable: true,
+        get: function() {
+          return window.windowProxy[name];
+        },
+        set: function(value) {
+          if (debug_player)
+            console.warn('fakePlayer ignores set call for ' + name);
+        }
+      });
+      if (debug_player)
+        console.log('FakePlayer.initialize: add forwarding getter for ' + name);
 
-    // Add built-ins to windowProxy forwarding to window.
+    });
+*/
+    // Add built-ins to windowProxy forwarding to global.
     FakeCommon.chromeBuiltins.forEach(function(name) {
-      window.windowProxy[name] = window[name];
+      windowProxy[name] = global[name];
     });
   },
 

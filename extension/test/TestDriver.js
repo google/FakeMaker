@@ -10,7 +10,7 @@
 (function(){
 
 function isSame(lhs, rhs) {
-  console.log('(' + (typeof lhs) + ') ' + lhs + ' === (' + typeof(rhs) + ') ' + rhs + ' ' + (lhs === rhs));
+  console.log('(' + (typeof lhs) + ') ' + lhs + ' === (' + typeof(rhs) + ') ' + rhs + ' Passed: ' + (lhs === rhs));
   return rhs === lhs;
 }
 

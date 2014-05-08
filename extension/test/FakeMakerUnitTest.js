@@ -467,35 +467,19 @@ srcIIFEGlobal += " var hasPerformance = typeof global.performance === 'object' &
 srcIIFEGlobal += '  return hasPerformance;\n';
 srcIIFEGlobal += '})(this);\n';
 
-tests['testIIFEGlobal'] = function() {
-  testFakeMaker(srcIIFEGlobal, 'testIIFEGlobal');
-  return true;
-};
+createTests('testIIFEGlobal', srcIIFEGlobal, function() {
+  return isSame(windowProxy.testIIFEGlobal, true);
+});
 
-tests['checkIIFEGlobal'] = function() {
-  testPlayback(srcIIFEGlobal, 'testIIFEGlobal', function() {
-    return isSame(window.testIIFEGlobal, true);
-  });
-};
+srcIIFEGlobalProperty = "window.Platform = window.Platform || {};\n";
+srcIIFEGlobalProperty += "(function(scope){\n";
+srcIIFEGlobalProperty += " var flags = scope.flags || {};\n";
+srcIIFEGlobalProperty += "  scope.flags = flags;\n";
+srcIIFEGlobalProperty += "})(Platform);\n";
 
-tests['testIIFEGlobalProperty'] = function() {
-  var ourConsole = console;
-  // Transcode before creating the proxy
-  var src = document.querySelector('script[name="testIIFEGlobalProperty"]').textContent;
-  var transcoded = transcode(src, 'testIIFEGlobalProperty.js');
-  console.log('transcoded: ' + transcoded);
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval.call(window, transcoded);
-
-  json.testIIFEGlobalProperty = fakeMaker.toJSON();
-
-  ourConsole.log('testIIFEGlobalProperty', JSON.parse(json.testIIFEGlobalProperty));
-  var fakePlayer = new FakePlayer(json.testIIFEGlobalProperty);
-  windowProxy = fakePlayer.startingObject();
-  eval.call(null, transcoded);
-  return isSame(true, fakePlayer.endOfRecording()) && json;
- };
+createTests('testIIFEGlobalProperty', srcIIFEGlobalProperty, function() {
+  return isSame('object', typeof windowProxy.Platform);
+ });
 
 tests['testGlobalPrototype'] = function() {
   var ourConsole = console;
@@ -865,36 +849,12 @@ ProtoPropertiesSrc +=   "});\n";
 ProtoPropertiesSrc +=  "var pae = document.querySelector('polymer-another-element');\n"
 ProtoPropertiesSrc +=  "console.log('Properties of proto proto: ' +Object.getOwnPropertyNames(pae.__proto__.__proto__).join(', '));\n"
 
-tests['testProtoProperties'] = function() {
-  var ourConsole = console;
-  var transcoded = transcode(ProtoPropertiesSrc, 'testProtoProperties.js');
-  console.log('transcoded: ' + transcoded);
-  var fakeMaker = new FakeMaker();
-  windowProxy = fakeMaker.makeFakeWindow();
-  eval(transcoded);
+var expectedProtoProperties = Object.getOwnPropertyNames(HTMLElement.prototype).join(',');
 
-  json.testProtoProperties = fakeMaker.toJSON();
-
-  ourConsole.log('testProtoProperties', JSON.parse(json.testProtoProperties));
-  saveJsonData('testProtoProperties', json);
-  return true;
-}
-
-tests['checkProtoProperties'] = function() {
-  var expected = Object.getOwnPropertyNames(HTMLElement.prototype).join(',');
-  var transcoded = transcode(ProtoPropertiesSrc, 'checkProtoProperties.js');
-  console.log('transcoded: ' + transcoded);
-  restoreJsonData('testProtoProperties', function(json) {
-    console.log('checkProtoProperties playback data: ', json)
-    var fakePlayer = new FakePlayer(json);
-    window.windowProxy = fakePlayer.startingObject();
-    fakePlayer.initialize();
-    eval(transcoded);
-    var actual = windowProxy.testProtoProperties.join(',');
-    if (isSame(actual, expected))
-          pass();
-  });
-};
+createTests('testProtoPropertiesSrc', ProtoPropertiesSrc, function() {
+  var actual = windowProxy.testProtoProperties.join(',');
+  return isSame(actual, expectedProtoProperties);
+});
 
 var CreatedCallbackSrc = "var XBooPrototype = Object.create(HTMLElement.prototype);\n";
 CreatedCallbackSrc +=   "XBooPrototype.createdCallback = function() {\n";
@@ -967,18 +927,26 @@ createTests('testObjectCreated', objectCreateSrc, function() {
 
 var UpgradeDeepSrc = "(function() {\n";
 UpgradeDeepSrc += "var UpgradePrototype = Object.create(HTMLElement.prototype);\n";
-UpgradeDeepSrc +=   "var lhs = UpgradePrototype.__proto__;\n";
+UpgradeDeepSrc +=   "//var lhs = UpgradePrototype.__proto__;\n";
 UpgradeDeepSrc +=   "//console.log('---------------- lhs ', Object.getOwnPropertyNames(lhs));\n";
-UpgradeDeepSrc +=   "var rhs = HTMLElement.prototype;\n";
+UpgradeDeepSrc +=   "//var rhs = HTMLElement.prototype;\n";
 UpgradeDeepSrc +=   "//console.log('---------------- rhs ', Object.getOwnPropertyNames(rhs));\n";
-UpgradeDeepSrc +=   "console.assert(lhs === rhs);\n";
+UpgradeDeepSrc +=   "//console.assert(lhs === rhs);\n";
 UpgradeDeepSrc +=   "UpgradePrototype.createdCallback = function() {\n";
-UpgradeDeepSrc +=   "    console.assert(this.__proto__.__proto__ === HTMLElement.prototype);\n";
-UpgradeDeepSrc +=   "    console.log('this', this.getAttribute('name'));\n";
+// 'this' is  a proxy, so we should see init call recorded
+UpgradeDeepSrc +=   "    //console.assert(this.__proto__.__proto__ === HTMLElement.prototype);\n";
+UpgradeDeepSrc +=   "    //console.log('this', this.getAttribute('name'));\n";
 UpgradeDeepSrc +=   "    this.init();\n";
 UpgradeDeepSrc +=   "}\n";
 UpgradeDeepSrc +=   "UpgradePrototype.init = function() {\n";
-UpgradeDeepSrc +=   "    window.testUpgradeDeep = (this.__proto__.__proto__ === HTMLElement.prototype) ? this.getAttribute('name') : 'invalid';\n";
+// 'this' is a proxy,  this.__proto__ is not, this.__proto__.__proto__ is.
+// We should see the get call for this.__proto__.__proto__ on the way up the proto chain.
+UpgradeDeepSrc +=   "var lhs = this.__proto__.__proto__;\n";
+UpgradeDeepSrc +=   "console.log('---------------- this.__proto__.__proto__ ', Object.getOwnPropertyNames(lhs));\n";
+UpgradeDeepSrc +=   "var rhs = HTMLElement.prototype;\n";
+UpgradeDeepSrc +=   "console.log('---------------- HTMLElement.prototype ', Object.getOwnPropertyNames(rhs));\n";
+UpgradeDeepSrc +=   "//console.assert(lhs === rhs);\n";
+UpgradeDeepSrc +=   "    window.testUpgradeDeep = (lhs === rhs) ? this.getAttribute('name') : 'invalid';\n";
 UpgradeDeepSrc +=   "}\n";
 UpgradeDeepSrc +=   "document.registerElement('polymer-element', {\n";
 UpgradeDeepSrc +=   "  prototype: UpgradePrototype\n";
