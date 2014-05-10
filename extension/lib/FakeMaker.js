@@ -49,6 +49,7 @@ function FakeMaker() {
   this._originalProperties = []; // object keys when proxy first created.
   this._setExpandoGlobals = [];
   this._expandoPrototypes = [];
+  this._expandoPrototypeCopies = [];
 
   this._callbacks = [];
 
@@ -88,7 +89,7 @@ function FakeMaker() {
           optionsCopy.extends = options.extends;
         outputArgs.push(optionsCopy);
         if (options.prototype) {
-          console.log('registerElement  ' + elementName);
+          console.log('registerElement  ' + elementName + ' options.prototype.__proto__ ' + fakeMaker.isAProxy(options.prototype.__proto__));
           var currentExpandoPrototypes = fakeMaker._expandoPrototypes.length;
           // Get the proto chain from obj to HTMLElement.prototype
           var chain = [];
@@ -123,12 +124,15 @@ function FakeMaker() {
             // Behind our back JS+DOM will make an expando property __proto__ of any newed
             // custom elements and set it to the object value of prototype. Record these objects
             // to avoid placing their properties on the originalProperties list.
-            fakeMaker._expandoPrototypes.push(prototypeCopy);
+            fakeMaker._expandoPrototypes.push(options.prototype);
+            fakeMaker._expandoPrototypeCopies.push(prototypeCopy);
+
             if (calls_debug) {
               var deproxiedProtoLength = Object.getOwnPropertyNames(deproxiedProto).length;
               var prototypeCopyLength = Object.getOwnPropertyNames(prototypeCopy).length;
               console.log('proto comparison ' + deproxiedProtoLength +' === ' + prototypeCopyLength);
               console.assert(deproxiedProtoLength === prototypeCopyLength);
+              console.log('added expandoPrototype at ' + fakeMaker._expandoPrototypes.length)
             }
           }, path + '.prototype');
 
@@ -403,6 +407,11 @@ FakeMaker.prototype = {
     return function() {  // This is the function that the DOM will call.
       if (calls_debug) {
         console.log('_proxyACallback callback called ' + path + ' with depth ' + __F_.depth);
+        // For registerElement(), 'this.__proto__' will not be a proxy but this.__proto__.__proto__
+        // will be HTMLElement.prototype which is a proxy.
+        var thisProtoProto = Object.getPrototypeOf(Object.getPrototypeOf(this));
+        var thisProtoIndex = fakeMaker.isAProxy(thisProtoProto) ? fakeMaker.getIndexOfProxy(thisProtoProto, path) : 'not a proxy';
+        console.log('_proxyACallback thisProtoProto proxyIndex ' + thisProtoIndex, thisProtoProto);
       }
 
       // Simulate  'this.callback(args)' having a proxy for 'this'.
@@ -421,7 +430,19 @@ FakeMaker.prototype = {
       // the call stack depth will be zero because we don't transcode the caller.
       ref._callback_depth = __F_.depth || sync;
       fakeMaker._record(ref, path + '-callback');
-
+      // Check if 'this' has an expandoPrototype on its proto chain
+      var protoOwner = fakeMaker.deproxyArg(this);
+      fakeMaker._someProtos(Object.getPrototypeOf(this), function(proto) {
+        console.log("checking proto isAProxy " + fakeMaker.isAProxy(proto))
+        var index = fakeMaker._expandoPrototypeCopies.indexOf(proto);
+        if (index !== -1) {
+          console.log('_proxyACallback found _expandoPrototypeCopies at ' + index);
+          // this proto is a copy we created while de-proxying the arguments to registerElement
+          Object.setPrototypeOf(protoOwner, fakeMaker._expandoPrototypes[index]);
+          return true;
+        }
+        protoOwner = proto;
+      });
       if (calls_debug) {
         console.log('_proxyACallback entering callback with "this" ref ' + refThis._fake_object_ref
               + ' indexOfProxy ' + fakeMaker.getIndexOfProxy(this, path));
@@ -507,7 +528,7 @@ FakeMaker.prototype = {
 
     var expandos = this._expandoProperties[indexOfProxy];
     if (expandos && expandos.hasOwnProperty(name)) {
-      var value = Reflect.get(obj, name, this.deproxyArg(receiver));
+      var value = Reflect.get(obj, name, receiver);
       if (expando_debug && value && (typeof value === 'object') && !this.isAProxy(value))
         console.log('found expando property ' + name + ' own: ', Object.getOwnPropertyNames(value));
       return {value: value};
@@ -518,6 +539,10 @@ FakeMaker.prototype = {
     // The DOM property 'name' was used by the app.
     var indexOfProxy = this.getIndexOfProxy(obj, path);
     var indexOfRefedObject = this._objectsReferenced.indexOf(obj);
+    if (indexOfRefedObject === -1) {
+      var ref = this._getOrCreateObjectRef(obj, path);
+      indexOfRefedObject = this._objectsReferenced.indexOf(obj);
+    }
 
     var jsonableObjectRep = this._jsonableObjectReps[indexOfRefedObject];
     // Mark the rep to create a getter at this name in the player.
@@ -591,7 +616,7 @@ FakeMaker.prototype = {
         console.log('_getFromPropertyDescriptor ' + name + ': undefined ' + path);
     } else if (descriptor.get) {
       this.stopRecording(path);
-      var value = Reflect.get(obj, name, this.deproxyArg(receiver));
+      var value = Reflect.get(obj, name, receiver);
       this.startRecording(path);
       result = this._wrapCallResult(value, obj, path + '.' + name);
       if (get_set_debug)
@@ -768,7 +793,7 @@ console.log("get " + name + " returns <<<<")
         if (!fakeMaker.isAProxy(proto)) {
           protoProxy = fakeMaker._getOrCreateProxyObject(proto, receiver, path + '.getPrototypeOf');
         }
-        return Reflect.get(protoProxy, name, fakeMaker.deproxyArg(receiver));
+        return Reflect.get(protoProxy, name, receiver);
       },
 
       has: function(target, name) {
