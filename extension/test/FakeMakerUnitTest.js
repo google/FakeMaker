@@ -276,24 +276,12 @@ tests['testNewDOMObject'] = function() {
   return isSame((new objWithCtor.UIEvent('testEvent')).pageX, UIEventFromStart.pageX) && json;
 };
 
-tests['testWindowProperty'] = function() {
-  var tagNameTrue = window.document.body.tagName;
-  var fakeMaker = new FakeMaker();
-  var windowProxy = fakeMaker.makeFake(window, 'window');
-  var windowProxyDocument = windowProxy.document;
-  console.log("windowProxyDocument");
-  var windowProxyDocumentBody = windowProxyDocument.body;
-  console.log("windowProxyDocumentBody");
-  var tagName = windowProxyDocumentBody.tagName;
-  console.log("windowProxyDocumentBody.tagName");
-  console.assert(tagNameTrue === tagName);
+var tagNameTrue = window.document.body.tagName;
+var windowPropertySrc = 'window.testWindowProperty = document.body.tagName;\n';
 
-  json.testWindowProperty = fakeMaker.toJSON();
-  console.log('window', JSON.parse(json.testWindowProperty));
-  var fakePlayer = new FakePlayer(json.testWindowProperty);
-  return isSame(tagNameTrue, fakePlayer.startingObject().document.body.tagName) && json;
-};
-
+createTests('testWindowProperty', windowPropertySrc, function() {
+  return isSame(tagNameTrue, windowProxy.testWindowProperty);
+});
 
 tests['testWindow'] = function() {
   var fakeMaker = new FakeMaker();

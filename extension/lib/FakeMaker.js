@@ -541,7 +541,8 @@ FakeMaker.prototype = {
 
     var expandos = this._expandoProperties[indexOfProxy];
     if (expandos && expandos.hasOwnProperty(name)) {
-      var value = Reflect.get(obj, name, receiver);
+      var deproxyReceiver = this.deproxyArg(receiver);
+      var value = Reflect.get(obj, name, deproxyReceiver);
       if (expando_debug && value && (typeof value === 'object') && !this.isAProxy(value))
         console.log('found expando property ' + name + ' own: ', Object.getOwnPropertyNames(value));
       return {value: value};
@@ -552,8 +553,8 @@ FakeMaker.prototype = {
     // The DOM property 'name' was used by the app.
 
     // The access marks create stub properties on playback. We can't do that for
-    // __proto__, we use the fake_proto to handle these.
-    if (name === '__proto__')
+    // 'prototype' or '__proto__', we use the object refs and fake_proto to handle these.
+    if (name === 'prototype' || name === '__proto__')
       return;
 
     var indexOfProxy = this.getIndexOfProxy(obj, path);
@@ -835,8 +836,9 @@ console.log("get " + name + " returns <<<<")
         // be a proxy. The recursive 'get' would result in a recording. Thus we want to suspend proxy operation
         // during the protochain traversal.
         var deproxyProto = fakeMaker.deproxyArg(proto);
+        var deproxyReceiver = fakeMaker.deproxyArg(receiver);
         fakeMaker.suspendProxies = true;
-        var result = Reflect.get(deproxyProto, name, receiver);
+        var result = Reflect.get(deproxyProto, name, deproxyReceiver);
         fakeMaker.suspendProxies = false;
         if (typeof result === 'undefined')
           return this.wrapUndefinedOriginalProperty(obj, name, path);
