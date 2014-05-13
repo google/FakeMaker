@@ -8,6 +8,13 @@
 
 (function(){
 
+function assert(mustBeTrue) {
+  if (!mustBeTrue) {
+    console.assert(mustBeTrue);
+    throw new Error('Assert');
+  }
+}
+
 var _debug = true;
 var maker_debug = _debug;
 var expando_debug = _debug;
@@ -271,23 +278,26 @@ FakeMaker.prototype = {
   },
 
   _createJSONableObjectRepresentation: function(obj, path) {
-      var jsonableObjectRep = {};
-      var fakeMaker = this;
-      var rep = jsonableObjectRep;
-      var repPath = path;
-      // Walk the proto chain of obj and set fake protos on jsonableObjectRep.
-      this._someProtos(Object.getPrototypeOf(obj), function(proto) {
-        var indexOfRefedProto = fakeMaker._objectsReferenced.indexOf(proto);
-        repPath = repPath + '__proto__';
-        if (indexOfRefedProto === -1) {
-          rep._fake_proto_  = fakeMaker._getOrCreateObjectRef(proto, repPath);
-        } else {
-          rep._fake_proto_ = fakeMaker._objectReferences[indexOfRefedProto];
-        }
-        rep = rep._fake_proto_;
-        return (indexOfRefedProto !== -1);  // stop if we found a proxy on chain
-      }, path);
-      return jsonableObjectRep;
+    assert(!this.isAProxy(obj));
+    var jsonableObjectRep = {};
+    var fakeMaker = this;
+    var rep = jsonableObjectRep;
+    var repPath = path;
+    // Walk the proto chain of obj and set fake protos on jsonableObjectRep.
+    this._someProtos(Object.getPrototypeOf(obj), function(proto) {
+      repPath = repPath + '__proto__';
+      var indexOfProxy = fakeMaker._proxiedObjects.indexOf(obj);
+      if (indexOfProxy === -1)
+        return true; // Stop, we found a proxy on chain.
+      var indexOfRefedProto = fakeMaker._objectsReferenced.indexOf(proto);
+      if (indexOfRefedProto === -1) {
+        rep._fake_proto_  = fakeMaker._getOrCreateObjectRef(proto, repPath);
+      } else {
+        rep._fake_proto_ = fakeMaker._objectReferences[indexOfRefedProto];
+      }
+      rep = rep._fake_proto_;
+    }, path);
+    return jsonableObjectRep;
   },
 
   _getOrCreateObjectRef: function(obj, path) {
@@ -463,6 +473,9 @@ FakeMaker.prototype = {
   },
 
   deproxyArgs: function(args, theThis, path) {
+    if (calls_debug)
+      console.log('deproxyArgs ' + args.length);
+
     var fakeMaker = this;
     return args.map(function(argMaybeProxy, index) {
       // callback need wrappers to map callback arguments to their proxies.
@@ -537,6 +550,12 @@ FakeMaker.prototype = {
 
   _markAccess: function(obj, name, path) {
     // The DOM property 'name' was used by the app.
+
+    // The access marks create stub properties on playback. We can't do that for
+    // __proto__, we use the fake_proto to handle these.
+    if (name === '__proto__')
+      return;
+
     var indexOfProxy = this.getIndexOfProxy(obj, path);
     var indexOfRefedObject = this._objectsReferenced.indexOf(obj);
     if (indexOfRefedObject === -1) {
@@ -717,7 +736,7 @@ FakeMaker.prototype = {
 
         if (fakeMaker.isAProxy(obj))
           throw new Error('get on proxy object');
-
+/*
         if (name === '__proto__') {
           // then we can't use getOwn* functions.
           // And: a non-proxy can have a proxy on the prototype chain
@@ -737,7 +756,7 @@ console.log("get " + name + " returns <<<<")
             return fakeMaker._getOrCreateProxyObject(protoValue, null, path, path + '.__proto__');
           else
             return fakeMaker._wrapReturnValue(protoValue, obj, path  + '.__proto__');
-        }
+        } */
 
         if (get_set_debug) {
           console.log('get ' + name + ' obj === window: ' + (obj === window),
@@ -758,42 +777,73 @@ console.log("get " + name + " returns <<<<")
         if (!descriptor) {
           if (get_set_debug)
             console.log('get traversing proto chain for ' + name + ' at ' + path)
-          return this.getFromProtoChain(target, name, receiver, path);
-        }
-
-        fakeMaker._markAccess(obj, name, path);
-
-
-        if (get_set_debug) console.log('got descriptor ' + name + ' at ' + path);
-
-        var result = fakeMaker._getFromPropertyDescriptor(obj, target, name, receiver, descriptor, path);
-
-        // '.apply()' will need to process some functions for callbacks before they go into the DOM. But it does not
-        // know the name of the function it will call. So we check the name here and mark the shadow/target for apply
-        if (name in fakeMaker._DOMFunctionsThatCallback) {
-          if (get_set_debug) {
-            var indexOfResult = fakeMaker._proxiesOfObjects.indexOf(result);
-            console.log(name + ' isA _DOMFunctionsThatCallback ' + path + ' pushing ' + (typeof result) + ' isAProxy ' + fakeMaker.isAProxy(result) + ' index ' + indexOfResult );
+          result = this.getFromProtoChain(obj, name, receiver, path);
+        } else {  // We found an 'own' property.
+          if (fakeMaker.suspendProxies) {
+            // The 'own' property was found while traversing the proto-chain, don't record anything.
+            return Reflect.get(obj, name, receiver);
           }
-          fakeMaker._functionProxiesThatTakeCallbackArgs.push(result);
-          fakeMaker._callbackArgHandlers.push(fakeMaker._DOMFunctionsThatCallback[name].bind(fakeMaker));
+          if (get_set_debug)
+            console.log('got descriptor ' + name + ' at ' + path);
+          result = fakeMaker._getFromPropertyDescriptor(obj, target, name, receiver, descriptor, path);
         }
-        console.log("get " + name + " returns <<<<")
+        if (typeof result !== 'undefined') {
+          fakeMaker._markAccess(obj, name, path);
+          // '.apply()' will need to process some functions for callbacks before they go into the DOM. But it does not
+          // know the name of the function it will call. So we check the name here and mark the shadow/target for apply
+          if (name in fakeMaker._DOMFunctionsThatCallback) {
+            if (get_set_debug) {
+              var indexOfResult = fakeMaker._proxiesOfObjects.indexOf(result);
+              console.log(name + ' isA _DOMFunctionsThatCallback ' + path + ' pushing ' + (typeof result) + ' isAProxy ' + fakeMaker.isAProxy(result) + ' index ' + indexOfResult );
+            }
+            fakeMaker._functionProxiesThatTakeCallbackArgs.push(result);
+            fakeMaker._callbackArgHandlers.push(fakeMaker._DOMFunctionsThatCallback[name].bind(fakeMaker));
+          }
+        }
+        console.log("get " + name + " returns " + typeof result + " <<<<")
         return result;
       },
 
+      wrapUndefinedOriginalProperty: function(obj, name, path) {
+        // The name is not defined on the object or its proto chain.
+        var indexOfProxy = fakeMaker.getIndexOfProxy(obj, path);
+        if (fakeMaker.shouldBeExpando(obj, name, indexOfProxy)) {
+          // Expando, not defined on DOM.
+          // eg window.Platform = window.Platform || {};
+          return undefined;
+        }
+        // Not expando, just a property with no value?
+        if (get_set_debug)
+          console.log('getFromProtoChain ' + name + ': undefined ' + path);
+        return fakeMaker._wrapReturnValue(undefined, undefined, path + '.' + name);
+      },
+
       getFromProtoChain: function(target, name, receiver, path) {
+        // Recurse up the proto chain to find 'name'.
         var proto = Object.getPrototypeOf(obj);
         if (!proto) {
-          if (get_set_debug)
-            console.log('getFromProtoChain ' + name + ': undefined ' + path);
-          return fakeMaker._wrapReturnValue(undefined, undefined, path + '.' + name);
+          return this.wrapUndefinedOriginalProperty(obj, name, path);
         }
-        var protoProxy = proto;
-        if (!fakeMaker.isAProxy(proto)) {
-          protoProxy = fakeMaker._getOrCreateProxyObject(proto, receiver, path + '.getPrototypeOf');
-        }
-        return Reflect.get(protoProxy, name, receiver);
+        // On playback we won't mimic the traversal, we'll just replay the result from a getter
+        // at property key 'name' on the original target. Thus we don't want to record any intermediate
+        // steps.
+        // Any link in the proto chain can have a proxy value and any link could have been set by the
+        // app JS. A proxy value will trigger the 'get' trap and return a recorded result causing playback.
+        // Since we don't want playback, we need avoid using the proxy value.  A __proto__ value set by JS
+        // should not be proxied since we don't want to record any actions on object set by JS.
+        // Once we deproxy the proto, a 'get' on the proto could cause further traversal, and that link could
+        // be a proxy. The recursive 'get' would result in a recording. Thus we want to suspend proxy operation
+        // during the protochain traversal.
+        var deproxyProto = fakeMaker.deproxyArg(proto);
+        fakeMaker.suspendProxies = true;
+        var result = Reflect.get(deproxyProto, name, receiver);
+        fakeMaker.suspendProxies = false;
+        if (typeof result === 'undefined')
+          return this.wrapUndefinedOriginalProperty(obj, name, path);
+
+        if (get_set_debug)
+          console.log('getFromProtoChain Reflect.get result for ' + name + ' ' + typeof result)
+        return fakeMaker._wrapReturnValue(result, receiver, path + '.' + name);
       },
 
       has: function(target, name) {
@@ -880,16 +930,16 @@ console.log("get " + name + " returns <<<<")
         // for callback functions.
         var deproxiedthisArg = fakeMaker.toObject(thisArg);
         deproxiedthisArg = deproxiedthisArg || thisArg;
-        var deproxyArgs;
         var indexOfFunctionProxy = fakeMaker._proxiedObjects.indexOf(obj);
         var functionProxy = fakeMaker._proxiesOfObjects[indexOfFunctionProxy];
-        var hasDOMCallbacks = fakeMaker._functionProxiesThatTakeCallbackArgs.indexOf(functionProxy);
+        var DOMCallbackIndex = fakeMaker._functionProxiesThatTakeCallbackArgs.indexOf(functionProxy);
         if (calls_debug) {
           console.log('apply: ' + path + ' proxy index  ', indexOfFunctionProxy + ' isA ' + (typeof functionProxy) + ' isAProxy ' + fakeMaker.isAProxy(functionProxy));
-          console.log('apply: ' + path + ' __DOMFunctionsThatCallback ', hasDOMCallbacks);
+          console.log('apply: ' + path + ' __DOMFunctionsThatCallback ', DOMCallbackIndex);
         }
-        if (hasDOMCallbacks !== -1)
-          deproxiedArgs = fakeMaker._callbackArgHandlers[hasDOMCallbacks](args, path);
+        var deproxiedArgs;
+        if (DOMCallbackIndex !== -1)
+          deproxiedArgs = fakeMaker._callbackArgHandlers[DOMCallbackIndex](args, path);
         else
           deproxiedArgs = fakeMaker.deproxyArgs(args, deproxiedthisArg, path);
 
@@ -897,7 +947,7 @@ console.log("get " + name + " returns <<<<")
           console.log("apply with this: "+ typeof(deproxiedthisArg) + ' proxyIndex: ' + fakeMaker._proxiesOfObjects.indexOf(thisArg) + ", args " + deproxiedArgs.length + ' at ' + path + '()');
           console.log("apply thisArg === deproxiedthisArg: "+ (thisArg === deproxiedthisArg));
           deproxiedArgs.forEach(function(arg, index) {
-            console.log('apply ['+index +']=',arg);
+            console.log('apply ['+index +']=', typeof arg);
           });
         }
         var result = Reflect.apply(obj, deproxiedthisArg, deproxiedArgs);

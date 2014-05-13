@@ -837,10 +837,9 @@ createTests('testBuiltInFunctionProperty', BuiltInFunctionPropertysrc, function(
 });
 
 var ProtoPropertiesSrc = "var AnotherPrototype = Object.create(HTMLElement.prototype);\n";
-ProtoPropertiesSrc += "window.preTestProtoProperties = AnotherPrototype.__proto__;"
 ProtoPropertiesSrc +=   "AnotherPrototype.createdCallback = function() {\n";
-ProtoPropertiesSrc +=   "    var myProto = this.__proto__;\n";
-ProtoPropertiesSrc +=   "    var myProtoProto = myProto.__proto__;\n";
+ProtoPropertiesSrc +=   "    var myProto = this.__proto__; // AnotherPrototype \n";
+ProtoPropertiesSrc +=   "    var myProtoProto = myProto.__proto__; // HTMLElement.prototype\n";
 ProtoPropertiesSrc +=   "    window.testProtoProperties = Object.getOwnPropertyNames(myProtoProto);\n";
 ProtoPropertiesSrc +=   "}\n";
 ProtoPropertiesSrc +=   "document.registerElement('polymer-another-element', {\n";

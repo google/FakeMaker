@@ -119,9 +119,15 @@ FakePlayer.prototype = {
     var event = this.checkForEvent(reply, path);
     if (event)
       return event;
+
+    if (debug_player)
+      console.log('no event, check sync at ' + path);
     // Check for sync after event dispatch: if we had an sync event,
     // the sync for it would already have been checked in its replay call.
     this.checkSync(path);
+
+    console.log('In sync at ' + path)
+
     if (reply && typeof reply === 'object' && !reply._fake_function_) {
       var obj = this._rebuiltObjects[reply._fake_object_ref];
       if (debug_player) {
@@ -222,6 +228,8 @@ FakePlayer.prototype = {
         var asyncEvent = maybeEvent;
         var fakePlayer = this;
         // We've found an async event. Move it from the replay queue to a setTimeout queue.
+        if (debug_player)
+          console.log('moving async event to setTimeout ' + path)
         this._currentReplay += 2;
         setTimeout(function() {
           if (debug_player)
