@@ -826,8 +826,9 @@ createTests('testBuiltInFunctionProperty', BuiltInFunctionPropertysrc, function(
 
 var ProtoPropertiesSrc = "var AnotherPrototype = Object.create(HTMLElement.prototype);\n";
 ProtoPropertiesSrc +=   "AnotherPrototype.createdCallback = function() {\n";
-ProtoPropertiesSrc +=   "    var myProto = this.__proto__; // AnotherPrototype \n";
-ProtoPropertiesSrc +=   "    var myProtoProto = myProto.__proto__; // HTMLElement.prototype\n";
+                        //  'this' is a proxy; its get trap will call getFromProtoChain and return a proxy....
+ProtoPropertiesSrc +=   "    var myProto = this.__proto__; // AnotherPrototype, not proxy. \n";
+ProtoPropertiesSrc +=   "    var myProtoProto = myProto.__proto__; // HTMLElement.prototype, isA proxy.\n";
 ProtoPropertiesSrc +=   "    window.testProtoProperties = Object.getOwnPropertyNames(myProtoProto);\n";
 ProtoPropertiesSrc +=   "}\n";
 ProtoPropertiesSrc +=   "document.registerElement('polymer-another-element', {\n";

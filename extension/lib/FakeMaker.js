@@ -788,7 +788,7 @@ console.log("get " + name + " returns <<<<")
             console.log('got descriptor ' + name + ' at ' + path);
           result = fakeMaker._getFromPropertyDescriptor(obj, target, name, receiver, descriptor, path);
         }
-        if (typeof result !== 'undefined') {
+        if (typeof result !== 'undefined' && name !== 'prototype') {
           fakeMaker._markAccess(obj, name, path);
           // '.apply()' will need to process some functions for callbacks before they go into the DOM. But it does not
           // know the name of the function it will call. So we check the name here and mark the shadow/target for apply
