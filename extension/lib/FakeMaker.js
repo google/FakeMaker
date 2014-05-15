@@ -112,6 +112,7 @@ function FakeMaker() {
             console.log('chain of deproxiedProto ', chain)
             throw new Error('The CustomElement prototype must extend HTMLElement.prototype');
           }
+
           // Copy the user's object, up to the required prototype.
           chain.reverse();
           var prototypeCopy = HTMLElement.prototype;
@@ -131,7 +132,7 @@ function FakeMaker() {
             // Behind our back JS+DOM will make an expando property __proto__ of any newed
             // custom elements and set it to the object value of prototype. Record these objects
             // to avoid placing their properties on the originalProperties list.
-            fakeMaker._expandoPrototypes.push(options.prototype);
+            fakeMaker._expandoPrototypes.push(deproxiedProto);
             fakeMaker._expandoPrototypeCopies.push(prototypeCopy);
 
             if (calls_debug) {
@@ -844,8 +845,17 @@ console.log("get " + name + " returns <<<<")
           return this.wrapUndefinedOriginalProperty(obj, name, path);
 
         if (get_set_debug)
-          console.log('getFromProtoChain Reflect.get result for ' + name + ' ' + typeof result)
-        return fakeMaker._wrapReturnValue(result, receiver, path + '.' + name);
+          console.log('getFromProtoChain Reflect.get result for ' + name + ' ' + typeof result);
+
+        if (fakeMaker._expandoPrototypes.indexOf(deproxyProto) === -1) {
+          // The proto was not an expando, assume it is a DOM proto
+          return fakeMaker._wrapReturnValue(result, receiver, path + '.' + name);
+        } else {
+          // Don't proxy results from non-DOM protos.
+          if (get_set_debug)
+            console.log('getFromProtoChain found expandoPrototype when looking for ' + name + ' at ' + path);
+          return result;
+        }
       },
 
       has: function(target, name) {
