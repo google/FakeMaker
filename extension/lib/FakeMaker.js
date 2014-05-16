@@ -288,7 +288,7 @@ FakeMaker.prototype = {
     this._someProtos(Object.getPrototypeOf(obj), function(proto) {
       repPath = repPath + '__proto__';
       var indexOfProxy = fakeMaker._proxiedObjects.indexOf(obj);
-      if (indexOfProxy === -1)
+      if (indexOfProxy !== -1)
         return true; // Stop, we found a proxy on chain.
       var indexOfRefedProto = fakeMaker._objectsReferenced.indexOf(proto);
       if (indexOfRefedProto === -1) {

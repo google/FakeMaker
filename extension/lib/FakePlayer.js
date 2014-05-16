@@ -380,7 +380,7 @@ FakePlayer.prototype = {
           shell[name] = fakePlayer._rebuiltObjects[propertyRep._fake_object_ref];
         }
       } else {
-        console.log('_fillShells ' + index + ' ' + name)
+        console.log('_fillShells ' + index + ' ' + name);
         // values
         Object.defineProperty(shell, name, {
           get: function() {
