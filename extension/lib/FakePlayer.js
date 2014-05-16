@@ -285,6 +285,8 @@ FakePlayer.prototype = {
   createLifeCycleWrapper: function(prototype, name) {
     var fakePlayer = this;
     return function lifeCycleWrapper()  {
+      if (debug_player)
+        console.log('lifeCycleWrapper prototype ' + Object.getOwnPropertyNames(prototype));
       var fakeCustomElement = fakePlayer.getOrCreateFakeCustomElement(this, prototype);
       // complete the callback using the newly faked CustomElement.
       prototype[name].apply(fakeCustomElement, []);
@@ -328,7 +330,7 @@ FakePlayer.prototype = {
       this._nameShells(objRep, this._rebuiltObjects[index]);
     }.bind(this));
     objReps.forEach(function (objRep, index) {
-      this._fillShells(objRep, this._rebuiltObjects[index]);
+      this._fillShells(objRep, this._rebuiltObjects[index], index);
     }.bind(this));
   },
 
@@ -350,7 +352,7 @@ FakePlayer.prototype = {
     var fakePlayer = this;
     Object.getOwnPropertyNames(objRep).forEach(function (name) {
       var propertyRep = objRep[name];
-      if (propertyRep._fake_function_) {
+      if (typeof propertyRep === 'object' && propertyRep._fake_function_) {
         // Write over the unnamed entry with a named version.
         var fnc = fakePlayer.createFunctionObject(propertyRep, name, '');
         fakePlayer._rebuiltObjects[propertyRep._fake_object_ref] = fnc;
@@ -358,27 +360,27 @@ FakePlayer.prototype = {
     });
   },
 
-  _fillShells: function(objRep, shell) {
+  _fillShells: function(objRep, shell, index) {
     var fakePlayer = this;
     Object.getOwnPropertyNames(objRep).forEach(function (name) {
       var propertyRep = objRep[name];
-      if (propertyRep._do_not_proxy_function_) {
-        shell[name] = eval(propertyRep._do_not_proxy_function_);
-        return;
-      }
-      if (name === '_fake_proto_') {
-        if (!propertyRep._fake_undefined)
-          Object.setPrototypeOf(shell, fakePlayer._rebuiltObjects[propertyRep._fake_object_ref]);
-        return;
-      }
-      if (propertyRep._fake_function_) {
-        // Set the pointer.
-        shell[name] = fakePlayer._rebuiltObjects[propertyRep._fake_object_ref];
-        return;
-      } else if (propertyRep._fake_object_ref) {
-        shell[name] = fakePlayer._rebuiltObjects[propertyRep._fake_object_ref];
-        return;
+      if (typeof propertyRep === 'object') {
+        if (propertyRep._do_not_proxy_function_) {
+          shell[name] = eval(propertyRep._do_not_proxy_function_);
+        }
+        if (name === '_fake_proto_') {
+          console.log('_fillShells _fake_proto_ setPrototypeOf ' + index + ' to ' + propertyRep._fake_object_ref )
+          if (!propertyRep._fake_undefined)
+            Object.setPrototypeOf(shell, fakePlayer._rebuiltObjects[propertyRep._fake_object_ref]);
+        }
+        if (propertyRep._fake_function_) {
+          // Set the pointer.
+          shell[name] = fakePlayer._rebuiltObjects[propertyRep._fake_object_ref];
+        } else if (propertyRep._fake_object_ref) {
+          shell[name] = fakePlayer._rebuiltObjects[propertyRep._fake_object_ref];
+        }
       } else {
+        console.log('_fillShells ' + index + ' ' + name)
         // values
         Object.defineProperty(shell, name, {
           get: function() {

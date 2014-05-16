@@ -847,6 +847,9 @@ console.log("get " + name + " returns <<<<")
         if (get_set_debug)
           console.log('getFromProtoChain Reflect.get result for ' + name + ' ' + typeof result);
 
+        if (name === '__proto__')  // these won't be backed by replay on playback
+          return result;
+
         if (fakeMaker._expandoPrototypes.indexOf(deproxyProto) === -1) {
           // The proto was not an expando, assume it is a DOM proto
           return fakeMaker._wrapReturnValue(result, receiver, path + '.' + name);
