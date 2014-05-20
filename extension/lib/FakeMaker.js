@@ -669,9 +669,19 @@ FakeMaker.prototype = {
       if (get_set_debug)
         console.log('_getFromPropertyDescriptor prototype ', ref);
       return this._getOrCreateProxyObject(descriptor.value, obj, path + '.prototype');
-    } else {
-      // Wrap the value and return it.
-      result = this._wrapPropertyDescriptor(target, name, descriptor, obj, path).value;
+    } else if (name === 'name') {
+      // V8 bug makes name not configurable. Therefore we cannot replace it with
+      // a getter during playback.
+      var indexOfRefedObject = this._objectsReferenced.indexOf(obj);
+      result = descriptor.value;
+      this._jsonableObjectReps[indexOfRefedObject].name = result;
+      if (get_set_debug)
+        console.log('_getFromPropertyDescriptor name ', result);
+    }  else {
+      // Wrap the value, store on target and return it.
+      var wrappedDescriptor = this._wrapPropertyDescriptor(target, name, descriptor, obj, path);
+      Object.defineProperty(target, name, wrappedDescriptor);
+      result = wrappedDescriptor.value;
       if (get_set_debug)
         console.log('_getFromPropertyDescriptor from defineProperty: ' + name + ' {' + typeof descriptor.value + '} at ' + path);
     }
@@ -718,7 +728,7 @@ FakeMaker.prototype = {
     if (typeof obj === 'object')
       shadow = {};
     else if (typeof obj === 'function')
-      shadow = function(){};
+      shadow = eval('(function ' + obj.name + '(){})');
     else
       throw new Error('Cannot make proxy for ' + typeof obj);
 
@@ -730,35 +740,12 @@ FakeMaker.prototype = {
       // target[name] or getter
       get: function(target, name, receiver) { // target is bound to the shadow object
         console.log("get " + name + " begins >>>>>");
-        if (typeof obj === 'function' && name === 'name')
-          throw new Error('get typeof function name === \'name\'');
         // Secret property name for debugging
         if (name === '__fakeMakerProxy')
           return true;
 
         if (fakeMaker.isAProxy(obj))
           throw new Error('get on proxy object');
-/*
-        if (name === '__proto__') {
-          // then we can't use getOwn* functions.
-          // And: a non-proxy can have a proxy on the prototype chain
-          // which triggers this call during chain traversial. The
-          // correct value of __proto__ is a getter in Object.prototype.
-          if (get_set_debug)
-            console.log('get __proto__ at ' + path);
-          var protoValue = Object.getPrototypeOf(receiver);
-
-          if (protoValue && fakeMaker.isAProxy(protoValue))
-            console.log('__proto__ isAProxy yea baby')
-          else
-            console.log('__proto__ own properties ', protoValue && Object.getOwnPropertyNames(protoValue));
-          console.log('obj own ',  Object.getOwnPropertyNames(obj));
-console.log("get " + name + " returns <<<<")
-          if (protoValue)
-            return fakeMaker._getOrCreateProxyObject(protoValue, null, path, path + '.__proto__');
-          else
-            return fakeMaker._wrapReturnValue(protoValue, obj, path  + '.__proto__');
-        } */
 
         if (get_set_debug) {
           console.log('get ' + name + ' obj === window: ' + (obj === window),
@@ -789,7 +776,7 @@ console.log("get " + name + " returns <<<<")
             console.log('got descriptor ' + name + ' at ' + path);
           result = fakeMaker._getFromPropertyDescriptor(obj, target, name, receiver, descriptor, path);
         }
-        if (typeof result !== 'undefined' && name !== 'prototype') {
+        if (typeof result !== 'undefined' && name !== 'prototype' && name !== 'name') {
           fakeMaker._markAccess(obj, name, path);
           // '.apply()' will need to process some functions for callbacks before they go into the DOM. But it does not
           // know the name of the function it will call. So we check the name here and mark the shadow/target for apply
@@ -1000,7 +987,7 @@ console.log("get " + name + " returns <<<<")
       getOwnPropertyNames: function(target) {
         if (recording_debug)
           console.log('getOwnPropertyNames  at ' + path)
-        var result = Reflect.getOwnPropertyNames(obj);
+        var result = Object.getOwnPropertyNames(obj);
         if (recording_debug)
           console.log('getOwnPropertyNames ', result);
         // Mark these names as accessed so they are written on the object ref for playback.

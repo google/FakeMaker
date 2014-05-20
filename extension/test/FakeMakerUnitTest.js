@@ -106,21 +106,13 @@ tests['testFunction'] = function() {
   return isSame(objWithFunction.baz(), obj.baz()) && json;
 };
 
-tests['testFunctionWithProperties'] = function() {
-  var fakeMaker = new FakeMaker();
-  var functionWithProps = function() {return 16;}
-  functionWithProps.foz = function() {return 17;}
-  var obj = {functionWithProps: functionWithProps};
-  var objProxy = fakeMaker.makeFake(obj, 'functionWithProps');
-  console.assert(objProxy.functionWithProps.foz() === obj.functionWithProps.foz());
+var functionWithPropsSrc = 'var functionWithProps = function() {return 16;}\n';
+functionWithPropsSrc += '  functionWithProps.foz = function() {return 17;}\n';
+functionWithPropsSrc += 'window.testFunctionWithProperties = functionWithProps.foz();\n';
 
-  json.testFunctionWithProperties = fakeMaker.toJSON();
-  console.log('functionWithProps:', JSON.parse(json.testFunctionWithProperties));
-  var fakePlayer = new FakePlayer(json.testFunctionWithProperties);
-  var start = fakePlayer.startingObject();
-  return isSame(obj.functionWithProps.foz(), start.functionWithProps.foz()) && json;
-};
-
+createTests('testFunctionWithProperties', functionWithPropsSrc, function() {
+  return isSame(windowProxy.functionWithProps.foz(), 17);
+});
 
 tests['testGetter'] = function() {
   var fakeMaker = new FakeMaker();
@@ -236,6 +228,21 @@ PrototypeSrc += 'testTheProto = typeof theProto.baz;\n';
 
 createTests('testProto', PrototypeSrc, function() {
   return isSame('function', windowProxy.testTheProto);
+});
+
+var constructorSrc = 'function Foo(){};\n';
+constructorSrc += 'var foo = new Foo()\n';
+constructorSrc += 'window.testConstructor = foo.constructor.name;\n';
+
+createTests('testConstructor', constructorSrc, function() {
+  return isSame('Foo', windowProxy.testConstructor);
+});
+
+var constructorDOMSrc = 'var ctor = HTMLElement.prototype.constructor;\n';
+constructorDOMSrc += 'window.testConstructorDOM = ctor.name;\n';
+
+createTests('testConstructorDOM', constructorDOMSrc, function() {
+  return isSame('HTMLElement', windowProxy.testConstructorDOM);
 });
 
 tests['testDOMObjectProperty'] = function() {

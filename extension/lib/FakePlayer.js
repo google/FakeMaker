@@ -29,26 +29,7 @@ FakePlayer.prototype = {
   initialize: function() {
     // Add the properties created on window by the app so they appear as globals,
     // but delay their access to the recording until the app calls for them.
-    /* this.getRootExpandoNames().forEach(function(name) {
-      if (debug_player) {
-        console.log('applyFakePlayer checking ' + name +
-          ' in window: ' + (name in windowProxy))
-      }
-      Object.defineProperty(windowProxy, name, {
-          configurable: true,
-        get: function() {
-          return window.windowProxy[name];
-        },
-        set: function(value) {
-          if (debug_player)
-            console.warn('fakePlayer ignores set call for ' + name);
-        }
-      });
-      if (debug_player)
-        console.log('FakePlayer.initialize: add forwarding getter for ' + name);
 
-    });
-*/
     // Add built-ins to windowProxy forwarding to global.
     FakeCommon.chromeBuiltins.forEach(function(name) {
       windowProxy[name] = global[name];
@@ -77,35 +58,42 @@ FakePlayer.prototype = {
     return this.callbacks[callbackIndex].call(theThis);
   },
 
-  createFunctionObject: function(propertyRep, propertyName, path) {
+  createFunctionObject: function(refToFunctionObject, key, path) {
     var fakePlayer = this;
-    if (typeof propertyRep._callback_ === 'number')
+    if (typeof refToFunctionObject._callback_ === 'number')
       return this.replayCallback(propertyRep);
 
     var fnc = function () {
-      fakePlayer.checkForCallback(propertyName, arguments);
+      fakePlayer.checkForCallback(key, arguments);
       return fakePlayer.replay();  // as a function, we replay
     }
 
-    var obj = this._rebuiltObjects[propertyRep._fake_object_ref];
-    Object.getOwnPropertyNames(obj).forEach(function(prop) {
-      // If the recording used a built-in function property, use the built-in
-      // one in the player.  Otherwise copy from the obj. (fnc is a simple
-      // built-in function)
-      if (!fnc.hasOwnProperty(prop)) {
-        des = Object.getOwnPropertyDescriptor(obj, prop);
-        Object.defineProperty(fnc, prop, des);
-      } else if (prop === 'prototype') {
+    var fncProperties = this._recordedProxiesOfObjects[refToFunctionObject._fake_object_ref];
+    if (fncProperties.name) {
+      fnc = eval('(' +
+        fnc.toString().replace('function', 'function ' + fncProperties.name) +
+        ')')
+    }
+    Object.getOwnPropertyNames(fncProperties).forEach(function(prop) {
+      if (prop === 'name') {
+        // V8 has a bug which prevents us from reconfiguring the name.
+        return;
+      }
+      if (prop === 'prototype') {
         // We can't reconfigure .prototype but we can over-write it.
-        fnc.prototype = obj.prototype;
-        if (propertyName === 'HTMLElement') {
+
+        fnc.prototype = fakePlayer._rebuiltObjects[fncProperties.prototype._fake_object_ref];
+        if (prop === 'HTMLElement') {
           // Save the HTMLElement.prototype for use in createCustomElement
           fakePlayer.HTMLElement_prototype = fnc.prototype;
         }
+      } else {
+        des = Object.getOwnPropertyDescriptor(fncProperties, prop);
+        Object.defineProperty(fnc, prop, des);
       }
     });
     // update the rebuilt object into a function with properties.
-    return this._rebuiltObjects[propertyRep._fake_object_ref] = fnc;
+    return this._rebuiltObjects[refToFunctionObject._fake_object_ref] = fnc;
   },
 
   replay: function(key) {
@@ -147,8 +135,8 @@ FakePlayer.prototype = {
         fnc = this.createFunctionObject(reply, key, path);
       }
       if (debug_player) {
-        console.log(index + ': replay (' + path + ') returns function ' +
-              reply._fake_object_ref);
+        console.log(index + ': replay (' + path + ') returns ' + typeof fnc +
+            ' ' + reply._fake_object_ref);
       }
       return fnc;
     } else {
@@ -332,6 +320,8 @@ FakePlayer.prototype = {
     objReps.forEach(function (objRep, index) {
       this._fillShells(objRep, this._rebuiltObjects[index], index);
     }.bind(this));
+    if (debug_player)
+      console.log('_rebuildObjectGraph _rebuiltObjects ', this._rebuiltObjects);
   },
 
   _buildShells: function(objRep) {
